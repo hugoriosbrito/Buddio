@@ -36,7 +36,15 @@ Write-Host "Downloading VB-CABLE from $Url ..."
 $ProgressPreference = "SilentlyContinue"
 Invoke-WebRequest -Uri $Url -OutFile $ZipPath
 
-$actualSha256 = (Get-FileHash -Path $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+# Avoid Get-FileHash: on some CI runners its module fails to autoload
+# under -NoProfile, and raw .NET hashing has no such dependency.
+$sha256 = [System.Security.Cryptography.SHA256]::Create()
+try {
+  $hashBytes = $sha256.ComputeHash([System.IO.File]::ReadAllBytes($ZipPath))
+} finally {
+  $sha256.Dispose()
+}
+$actualSha256 = ([System.BitConverter]::ToString($hashBytes) -replace "-", "").ToLowerInvariant()
 if ($actualSha256 -ne $ExpectedSha256) {
   Remove-Item -Force $ZipPath -ErrorAction SilentlyContinue
   throw "VB-CABLE download hash mismatch. Expected $ExpectedSha256, got $actualSha256. " +
