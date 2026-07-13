@@ -35,7 +35,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "Buddio ${{ github.ref_name }}"
           releaseDraft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
           args: --bundles nsis
           # Optional Authenticode: set WINDOWS_CERTIFICATE* secrets and wire
           # signing in a follow-up step (see docs/release.md).

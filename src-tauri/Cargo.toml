@@ -1,6 +1,6 @@
 [package]
 name = "buddio"
-version = "1.0.0"
+version = "1.0.0-rc2"
 description = "Buddio — offline-first soundboard with global hotkeys"
 authors = ["Buddio Contributors"]
 edition = "2021"

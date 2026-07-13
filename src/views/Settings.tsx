@@ -6,8 +6,9 @@ import {
   Moon,
   Sun,
 } from "@phosphor-icons/react";
+import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { HotkeyRecorder } from "../components/HotkeyRecorder";
 import { Button } from "../components/ui/Button";
 import { Search } from "../components/ui/Search";
@@ -57,6 +58,7 @@ export function SettingsView() {
   const [section, setSection] = useState<SettingsSection>("geral");
   const [settingsQuery, setSettingsQuery] = useState("");
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [installedVersion, setInstalledVersion] = useState(APP_VERSION);
   const settings = useSettingsStore((s) => s.settings);
   const devices = useSettingsStore((s) => s.devices);
   const error = useSettingsStore((s) => s.error);
@@ -79,6 +81,12 @@ export function SettingsView() {
   const setOnboardingOpen = useUiStore((s) => s.setOnboardingOpen);
   const setDiagnosticsOpen = useUiStore((s) => s.setDiagnosticsOpen);
   const push = useToastStore((s) => s.push);
+
+  useEffect(() => {
+    void getVersion()
+      .then(setInstalledVersion)
+      .catch(() => setInstalledVersion(APP_VERSION));
+  }, []);
 
   const monitorOptions = [
     { value: "", label: "Padrão do sistema" },
@@ -110,18 +118,25 @@ export function SettingsView() {
   const verifyUpdates = async () => {
     setCheckingUpdate(true);
     try {
-      const result = await checkForUpdates(APP_VERSION);
+      let current = installedVersion;
+      try {
+        current = await getVersion();
+        setInstalledVersion(current);
+      } catch {
+        /* browser / preview — keep package.json version */
+      }
+      const result = await checkForUpdates(current);
       switch (result.status) {
         case "up_to_date":
           push({
             kind: "success",
-            message: `Você já está na versão ${result.current}.`,
+            message: `Você já está na versão ${result.current} (latest no GitHub: ${result.latest}).`,
           });
           break;
         case "update_available":
           push({
             kind: "info",
-            message: `Nova versão ${result.latest} disponível.`,
+            message: `Nova versão ${result.latest} disponível (você tem ${result.current}).`,
             actionLabel: "Abrir no GitHub",
             onAction: () => {
               void openExternal(result.url);
@@ -397,7 +412,7 @@ export function SettingsView() {
           <div className="rounded-[var(--radius-control)] border border-[var(--buddio-border)] bg-[var(--buddio-window)] px-4 py-3">
             <p className="text-[12px] text-[var(--buddio-text-muted)]">Versão</p>
             <p className="mt-0.5 text-[16px] font-bold tabular-nums">
-              {APP_VERSION}
+              {installedVersion}
             </p>
           </div>
           <div className="rounded-[var(--radius-control)] border border-[var(--buddio-border)] bg-[var(--buddio-window)] px-4 py-3">
@@ -421,7 +436,8 @@ export function SettingsView() {
               Atualizações
             </p>
             <p className="mb-3 text-[13px] text-[var(--buddio-text-secondary)]">
-              Consulta a release mais recente no GitHub.
+              Consulta a release mais recente publicada no GitHub (incluindo
+              release candidates).
             </p>
             <Button
               variant="secondary"
