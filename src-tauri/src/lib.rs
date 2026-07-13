@@ -156,7 +156,10 @@ pub fn run() {
         )
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec!["--minimized"]),
+            // Launch-minimized is decided frontend-side from the persisted
+            // startInBackground/startMinimized settings (see uiStore.applyLaunchPreferences),
+            // not from a CLI flag — nothing here needs to read process args.
+            None,
         ))
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {

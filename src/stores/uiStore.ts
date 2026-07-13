@@ -269,12 +269,8 @@ export const useUiStore = create<UiState>((set, get) => ({
     }
   },
   applyLaunchPreferences: async () => {
-    const { startMinimized } = get();
-    const argsMinimized =
-      typeof window !== "undefined" &&
-      (window.location.search.includes("minimized") ||
-        window.location.hash.includes("minimized"));
-    if (!startMinimized && !argsMinimized) return;
+    const { startMinimized, startInBackground } = get();
+    if (!startMinimized && !startInBackground) return;
     try {
       const main = getCurrentWindow();
       await main.hide();
