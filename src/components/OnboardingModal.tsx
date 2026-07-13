@@ -574,7 +574,9 @@ export function OnboardingModal() {
 
   const applyVirtual = async () => {
     setEnsuringVirtual(true);
-    setVirtualEnsureMessage(null);
+    setVirtualEnsureMessage(
+      "Preparando a rota… Se o cabo ainda não estiver instalado, o Windows pode pedir permissão de administrador.",
+    );
     try {
       const result = await api.ensureVirtualCable();
       await hydrate();
@@ -1434,8 +1436,9 @@ function VirtualScreen({
         </p>
         <p className="text-[13px] text-[var(--buddio-text-secondary)]">
           Se o cabo ainda não existir, o Windows pedirá permissão de
-          administrador. Pode ser necessário reiniciar depois da instalação.
-          Com a mixagem ligada, sua voz e os sons saem juntos no Discord.
+          administrador (só o diálogo UAC — sem janelas pretas do PowerShell).
+          Pode ser necessário reiniciar depois da instalação. Com a mixagem
+          ligada, sua voz e os sons saem juntos no Discord.
         </p>
         <p className="text-[12px] text-[var(--buddio-text-secondary)]">
           Usa VB-CABLE de{" "}
@@ -1453,12 +1456,20 @@ function VirtualScreen({
           loading={ensuring}
           onClick={onActivate}
         >
-          {configured
-            ? "Rechecar rota"
-            : available
-              ? "Ativar rota"
-              : "Instalar e ativar"}
+          {ensuring
+            ? "Configurando… aguarde o Windows"
+            : configured
+              ? "Rechecar rota"
+              : available
+                ? "Ativar rota"
+                : "Instalar e ativar"}
         </Button>
+        {ensuring ? (
+          <p className="text-[12px] text-[var(--buddio-text-secondary)]">
+            O Buddio continua respondendo. Se o Windows pedir permissão, aceite
+            — não feche o app.
+          </p>
+        ) : null}
       </div>
 
       {statusMessage ? (

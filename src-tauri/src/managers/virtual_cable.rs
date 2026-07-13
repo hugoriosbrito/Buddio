@@ -1,6 +1,7 @@
 //! Detect / download / install / pick VB-CABLE for zero-config call routing.
 
 use std::fs;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -8,6 +9,14 @@ use std::time::Duration;
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+/// Hide console windows for helper processes (PowerShell / reg). Without this,
+/// onboarding flashes several black PowerShell windows and looks broken.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Official VB-CABLE driver pack (donationware — credit vb-cable.com in UI).
 const VB_CABLE_ZIP_URL: &str =
@@ -227,23 +236,8 @@ pub fn download_and_install(work_dir: &Path, bundled_pack: Option<&Path>) -> Res
         tracing::info!(url = VB_CABLE_ZIP_URL, "downloading VB-CABLE pack");
         download_file(VB_CABLE_ZIP_URL, &zip_path)?;
 
-        let expand = Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                &format!(
-                    "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
-                    ps_escape(&zip_path),
-                    ps_escape(&pack_dir)
-                ),
-            ])
-            .status()
-            .context("expand VB-CABLE zip")?;
-        if !expand.success() {
-            bail!("falha ao extrair o pacote VB-CABLE");
-        }
+        tracing::info!(zip = %zip_path.display(), "extracting VB-CABLE pack");
+        extract_zip(&zip_path, &pack_dir)?;
         flatten_single_nested_dir(&pack_dir)?;
     }
 
@@ -307,15 +301,16 @@ fn playback_present() -> bool {
 
 #[cfg(windows)]
 fn driver_service_present() -> bool {
-    Command::new("reg")
-        .args([
-            "query",
-            r"HKLM\SYSTEM\CurrentControlSet\Services\VBAudioVACWDM",
-            "/ve",
-        ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
+    let mut cmd = Command::new("reg");
+    cmd.args([
+        "query",
+        r"HKLM\SYSTEM\CurrentControlSet\Services\VBAudioVACWDM",
+        "/ve",
+    ])
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::null());
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd.status()
         .map(|s| s.success())
         .unwrap_or(false)
 }
@@ -370,22 +365,52 @@ fn flatten_single_nested_dir(pack_dir: &Path) -> Result<()> {
 }
 
 fn download_file(url: &str, dest: &Path) -> Result<()> {
-    let status = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            &format!(
-                "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '{}' -OutFile '{}'",
-                url.replace('\'', "''"),
-                ps_escape(dest)
-            ),
-        ])
-        .status()
-        .context("download VB-CABLE")?;
-    if !status.success() || !dest.is_file() {
-        bail!("não foi possível baixar o VB-CABLE de {url}");
+    // Pure Rust HTTP — never Spawn powershell/Invoke-WebRequest (that opens
+    // visible consoles and blocks the UI thread harder than a blocking ureq call).
+    let response = ureq::get(url)
+        .set("User-Agent", "Buddio/1.0 (+https://github.com/hugoriosbrito/Buddio)")
+        .timeout(Duration::from_secs(180))
+        .call()
+        .with_context(|| format!("download VB-CABLE from {url}"))?;
+    if !(200..300).contains(&response.status()) {
+        bail!(
+            "não foi possível baixar o VB-CABLE (HTTP {})",
+            response.status()
+        );
+    }
+    let mut reader = response.into_reader();
+    let mut file = fs::File::create(dest)
+        .with_context(|| format!("create {}", dest.display()))?;
+    io::copy(&mut reader, &mut file).context("write VB-CABLE zip")?;
+    file.flush()?;
+    if !dest.is_file() || dest.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
+        bail!("download do VB-CABLE veio vazio de {url}");
+    }
+    Ok(())
+}
+
+fn extract_zip(zip_path: &Path, dest: &Path) -> Result<()> {
+    let file = fs::File::open(zip_path).with_context(|| format!("open {}", zip_path.display()))?;
+    let mut archive = zip::ZipArchive::new(file).context("ler zip do VB-CABLE")?;
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .with_context(|| format!("zip entry {i}"))?;
+        let Some(rel) = entry.enclosed_name().map(|p| p.to_path_buf()) else {
+            continue;
+        };
+        let outpath = dest.join(rel);
+        if entry.is_dir() {
+            fs::create_dir_all(&outpath)?;
+            continue;
+        }
+        if let Some(parent) = outpath.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut outfile = fs::File::create(&outpath)
+            .with_context(|| format!("create extracted {}", outpath.display()))?;
+        io::copy(&mut entry, &mut outfile)
+            .with_context(|| format!("extract {}", outpath.display()))?;
     }
     Ok(())
 }
@@ -435,6 +460,9 @@ enum ElevatedOutcome {
 }
 
 /// One UAC prompt: elevated PowerShell runs certutil (optional) then VB-CABLE setup.
+///
+/// Every helper `powershell.exe` is started with `CREATE_NO_WINDOW` + `-WindowStyle Hidden`
+/// so onboarding only shows the UAC consent dialog — never a stack of black consoles.
 #[cfg(windows)]
 fn run_elevated_install(setup: &Path, pack_dir: &Path) -> Result<ElevatedOutcome> {
     let setup_s = native_path(setup);
@@ -447,11 +475,14 @@ fn run_elevated_install(setup: &Path, pack_dir: &Path) -> Result<ElevatedOutcome
             .unwrap_or(false)
     });
 
-    // Export publisher cert without elevation (read-only).
+    // Export publisher cert without elevation (read-only) — hidden console.
     if let Some(cat) = cat {
-        let _ = Command::new("powershell")
+        let mut export = Command::new("powershell");
+        export
             .args([
                 "-NoProfile",
+                "-WindowStyle",
+                "Hidden",
                 "-ExecutionPolicy",
                 "Bypass",
                 "-Command",
@@ -462,8 +493,9 @@ fn run_elevated_install(setup: &Path, pack_dir: &Path) -> Result<ElevatedOutcome
                 ),
             ])
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
+            .stderr(std::process::Stdio::null());
+        export.creation_flags(CREATE_NO_WINDOW);
+        let _ = export.status();
     }
 
     let cer_s = native_path(&cer);
@@ -474,7 +506,7 @@ fn run_elevated_install(setup: &Path, pack_dir: &Path) -> Result<ElevatedOutcome
          if (Test-Path -LiteralPath '{cer}') {{\n\
            & certutil.exe -addstore -f TrustedPublisher '{cer}' | Out-Null\n\
          }}\n\
-         $p = Start-Process -FilePath '{setup}' -ArgumentList '-h','-i','-H','-n' -WorkingDirectory '{pack}' -Wait -PassThru\n\
+         $p = Start-Process -FilePath '{setup}' -ArgumentList '-h','-i','-H','-n' -WorkingDirectory '{pack}' -WindowStyle Hidden -Wait -PassThru\n\
          if ($null -eq $p) {{ exit 1 }}\n\
          if ($null -eq $p.ExitCode) {{ exit 0 }}\n\
          exit [int]$p.ExitCode\n",
@@ -485,11 +517,13 @@ fn run_elevated_install(setup: &Path, pack_dir: &Path) -> Result<ElevatedOutcome
     fs::write(&script_path, script_body).context("write VB-CABLE install script")?;
 
     let script_s = native_path(&script_path);
+    // Outer launcher stays hidden; elevated child also gets -WindowStyle Hidden.
+    // The *only* visible OS UI should be the UAC consent prompt.
     let launcher = format!(
         "$ErrorActionPreference='Stop'; \
          try {{ \
-           $p = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru \
-             -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{script}'; \
+           $p = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -WindowStyle Hidden \
+             -ArgumentList '-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File','{script}'; \
            if ($null -eq $p) {{ exit 1223 }}; \
            if ($null -eq $p.ExitCode) {{ exit 0 }}; \
            exit [int]$p.ExitCode \
@@ -501,16 +535,21 @@ fn run_elevated_install(setup: &Path, pack_dir: &Path) -> Result<ElevatedOutcome
         script = ps_escape_str(&script_s),
     );
 
-    let status = Command::new("powershell")
+    let mut status_cmd = Command::new("powershell");
+    status_cmd
         .args([
             "-NoProfile",
+            "-WindowStyle",
+            "Hidden",
             "-ExecutionPolicy",
             "Bypass",
             "-Command",
             &launcher,
         ])
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    status_cmd.creation_flags(CREATE_NO_WINDOW);
+    let status = status_cmd
         .status()
         .context("elevated VB-CABLE install")?;
 

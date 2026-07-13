@@ -870,12 +870,14 @@ impl Drop for VirtualCableBusyGuard {
 }
 
 /// Detect VB-CABLE (or similar), install if missing, then set secondary output.
+///
+/// Runs the heavy download/UAC/wait work on a blocking pool thread so the
+/// Tauri event loop (and onboarding UI) stays responsive — the previous sync
+/// command froze the window for the whole PowerShell cascade.
 #[tauri::command]
 #[specta::specta]
-pub fn ensure_virtual_cable(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> CmdResult<VirtualCableEnsureResult> {
+pub async fn ensure_virtual_cable(app: AppHandle) -> CmdResult<VirtualCableEnsureResult> {
+    let state = app.state::<AppState>();
     // Reachable from three independent UI surfaces (onboarding auto-resume
     // after reboot, the "Ativar rota" button, "repair route") — refuse to
     // run two elevated VB-CABLE installs concurrently instead of letting
@@ -895,10 +897,28 @@ pub fn ensure_virtual_cable(
                 .to_string(),
         );
     }
-    let _busy_guard = VirtualCableBusyGuard(state.virtual_cable_busy.clone());
+    let busy = state.virtual_cable_busy.clone();
+    let settings_mgr = state.settings.clone();
+    let audio = state.audio.clone();
+    let app_for_block = app.clone();
 
-    let settings = state.settings.load().map_err(map_err)?;
-    let pending = state.settings.pending_virtual_setup().map_err(map_err)?;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let _busy_guard = VirtualCableBusyGuard(busy);
+        ensure_virtual_cable_blocking(app_for_block, settings_mgr, audio)
+    })
+    .await
+    .map_err(|e| format!("instalação do cabo virtual interrompida: {e}"))?;
+
+    result
+}
+
+fn ensure_virtual_cable_blocking(
+    app: AppHandle,
+    settings_mgr: std::sync::Arc<crate::managers::SettingsManager>,
+    audio: audio_engine::AudioEngineHandle,
+) -> CmdResult<VirtualCableEnsureResult> {
+    let settings = settings_mgr.load().map_err(map_err)?;
+    let pending = settings_mgr.pending_virtual_setup().map_err(map_err)?;
 
     let mut status = virtual_cable::build_status(
         settings.secondary_device.as_deref(),
@@ -921,8 +941,7 @@ pub fn ensure_virtual_cable(
         });
         let _reboot =
             virtual_cable::download_and_install(&work, bundled.as_deref()).map_err(map_err)?;
-        state
-            .settings
+        settings_mgr
             .set_pending_virtual_setup(true)
             .map_err(map_err)?;
 
@@ -963,8 +982,7 @@ pub fn ensure_virtual_cable(
         Some(playback.as_str()),
     );
 
-    state
-        .audio
+    audio
         .send(audio_engine::AudioCommand::SetOutputs {
             monitor_enabled,
             monitor: monitor.clone(),
@@ -972,14 +990,12 @@ pub fn ensure_virtual_cable(
         })
         .map_err(map_err)?;
 
-    // Persist via existing set_output_devices path
     let mut next = settings.clone();
     next.secondary_device = Some(playback.clone());
     next.monitor_enabled = monitor_enabled;
     next.monitor_device = monitor;
-    state.settings.save(&next).map_err(map_err)?;
-    state
-        .settings
+    settings_mgr.save(&next).map_err(map_err)?;
+    settings_mgr
         .set_pending_virtual_setup(false)
         .map_err(map_err)?;
 
@@ -991,11 +1007,9 @@ pub fn ensure_virtual_cable(
     .map_err(map_err)?;
 
     // Voice + soundboard share CABLE Output in Discord when mic mix is on.
-    let _ = state
-        .settings
-        .set_mic_route_mode(crate::models::MicRouteModeDto::Mix);
-    let settings = state.settings.load().map_err(map_err)?;
-    let _ = state.audio.send(audio_engine::AudioCommand::SetMicRoute {
+    let _ = settings_mgr.set_mic_route_mode(crate::models::MicRouteModeDto::Mix);
+    let settings = settings_mgr.load().map_err(map_err)?;
+    let _ = audio.send(audio_engine::AudioCommand::SetMicRoute {
         mode: audio_engine::MicRouteMode::Mix,
         ducking_db: settings.ducking_db,
         input_device: settings.mic_device,
