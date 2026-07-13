@@ -604,7 +604,7 @@ fn emit_unsupported_mouse(app: &AppHandle, clip_id: Option<&str>, hotkey: &str) 
 fn play_clip_by_id(app: &AppHandle, state: &AppState, clip_id: &str) -> Result<()> {
     let clip = state
         .library
-        .get_clip(clip_id)?
+        .get_clip_for_playback(clip_id)?
         .with_context(|| format!("clip {clip_id} not found"))?;
 
     if clip.stop_others {

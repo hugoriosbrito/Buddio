@@ -20,7 +20,6 @@ export function ProfilesView() {
   const remove = useProfilesStore((s) => s.remove);
   const hydrate = useProfilesStore((s) => s.hydrate);
   const activeId = useSettingsStore((s) => s.settings.activeProfileId);
-  const settings = useSettingsStore((s) => s.settings);
   const devices = useSettingsStore((s) => s.devices);
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
   const collections = useCollectionsStore((s) => s.collections);

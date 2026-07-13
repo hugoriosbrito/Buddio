@@ -260,7 +260,7 @@ pub fn play_clip(app: AppHandle, id: String) -> CmdResult<()> {
     let state = app.state::<AppState>();
     let clip = state
         .library
-        .get_clip(&id)
+        .get_clip_for_playback(&id)
         .map_err(map_err)?
         .ok_or_else(|| format!("clip {id} not found"))?;
 

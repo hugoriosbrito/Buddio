@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use uuid::Uuid;
 
 #[allow(dead_code)]
-pub const SCHEMA_VERSION: i32 = 3;
+pub const SCHEMA_VERSION: i32 = 4;
 
 const MIGRATION_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS migrations (
@@ -90,6 +90,10 @@ CREATE TABLE IF NOT EXISTS watched_folders (
 );
 "#;
 
+const MIGRATION_V4: &str = r#"
+ALTER TABLE clips ADD COLUMN loudness_refined INTEGER NOT NULL DEFAULT 0;
+"#;
+
 /// Open (or create) the SQLite database and apply pending migrations.
 pub fn open_and_migrate(db_path: &std::path::Path) -> Result<Connection> {
     if let Some(parent) = db_path.parent() {
@@ -135,6 +139,11 @@ fn migrate(conn: &Connection) -> Result<()> {
     if current < 3 {
         conn.execute_batch(MIGRATION_V3)?;
         conn.execute("INSERT OR IGNORE INTO migrations (version) VALUES (3)", [])?;
+    }
+
+    if current < 4 {
+        conn.execute_batch(MIGRATION_V4)?;
+        conn.execute("INSERT OR IGNORE INTO migrations (version) VALUES (4)", [])?;
     }
 
     Ok(())
@@ -219,7 +228,7 @@ mod tests {
         let version: i32 = conn
             .query_row("SELECT MAX(version) FROM migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, SCHEMA_VERSION);
 
         let name: String = conn
             .query_row("SELECT name FROM clips WHERE id = 'c1'", [], |r| r.get(0))

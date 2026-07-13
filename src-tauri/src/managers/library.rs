@@ -108,6 +108,75 @@ impl LibraryManager {
         Ok(clip)
     }
 
+    /// Get a clip for playback, refining its normalization gain from a quick
+    /// head-loudness estimate the first time it's played (Soundpad-style).
+    pub fn get_clip_for_playback(&self, id: &str) -> Result<Option<ClipDto>> {
+        let already_refined: Option<bool> = {
+            let conn = self.conn.lock();
+            conn.query_row(
+                "SELECT loudness_refined FROM clips WHERE id = ?1",
+                [id],
+                |r| r.get::<_, i64>(0).map(|v| v != 0),
+            )
+            .optional()?
+        };
+        match already_refined {
+            None => Ok(None),
+            Some(true) => self.get_clip(id),
+            Some(false) => {
+                self.refine_loudness(id)?;
+                self.get_clip(id)
+            }
+        }
+    }
+
+    fn refine_loudness(&self, id: &str) -> Result<()> {
+        let (file_hash, ext): (String, String) = {
+            let conn = self.conn.lock();
+            conn.query_row(
+                "SELECT file_hash, ext FROM clips WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?
+        };
+        let path = self.asset_path(&file_hash, &ext);
+        let target = self.voice_target_lufs();
+
+        let (lufs, gain) = match audio_engine::decode_file(&path) {
+            Ok(clip) => {
+                let head = audio_engine::estimate_head_lufs(
+                    &clip.pcm,
+                    clip.channels,
+                    clip.sample_rate,
+                    6.0,
+                );
+                (Some(head), audio_engine::norm_gain_db(head, target))
+            }
+            Err(_) => (None, 0.0),
+        };
+
+        let conn = self.conn.lock();
+        conn.execute(
+            "UPDATE clips SET integrated_lufs = ?1, norm_gain_db = ?2, loudness_refined = 1 WHERE id = ?3",
+            params![lufs, gain, id],
+        )?;
+        Ok(())
+    }
+
+    fn voice_target_lufs(&self) -> f32 {
+        let conn = self.conn.lock();
+        conn.query_row(
+            "SELECT value FROM settings WHERE key = 'voice_target_lufs'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<f32>().ok())
+        .unwrap_or(audio_engine::DEFAULT_VOICE_TARGET_LUFS)
+    }
+
     pub fn find_by_hotkey(&self, hotkey: &str) -> Result<Option<ClipDto>> {
         let conn = self.conn.lock();
         let mut clip = conn
@@ -181,7 +250,8 @@ impl LibraryManager {
         }
 
         let (duration_ms, peaks_json) = probe_duration_and_peaks(&dest);
-        let (integrated_lufs, norm_gain_db) = analyze_loudness(&dest, -16.0);
+        let target_lufs = self.voice_target_lufs();
+        let (integrated_lufs, norm_gain_db) = analyze_loudness(&dest, target_lufs);
         let name = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -548,6 +618,34 @@ mod tests {
         let second = lib.import_paths(&[wav]).unwrap();
         assert!(second.imported.is_empty());
         assert_eq!(second.duplicates.len(), 1);
+    }
+
+    #[test]
+    fn refines_loudness_on_first_playback() {
+        let dir = tempdir().unwrap();
+        let db = open_and_migrate(&dir.path().join("db.sqlite")).unwrap();
+        let conn = Arc::new(Mutex::new(db));
+        let lib = LibraryManager::new(conn.clone(), dir.path().join("assets")).unwrap();
+
+        let wav = dir.path().join("beep.wav");
+        write_minimal_wav(&wav);
+        let imported = lib.import_paths(&[wav]).unwrap();
+        let clip_id = imported.imported[0].id.clone();
+
+        let refined_once = lib.get_clip_for_playback(&clip_id).unwrap().unwrap();
+        let refined_flag: i64 = conn
+            .lock()
+            .query_row(
+                "SELECT loudness_refined FROM clips WHERE id = ?1",
+                [&clip_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(refined_flag, 1);
+
+        // Second call reads the persisted value instead of recomputing.
+        let refined_twice = lib.get_clip_for_playback(&clip_id).unwrap().unwrap();
+        assert_eq!(refined_once.norm_gain_db, refined_twice.norm_gain_db);
     }
 
     #[test]

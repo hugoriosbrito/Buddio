@@ -218,6 +218,30 @@ export function RoutingView() {
                 }}
               />
             </Field>
+            <Field label="Alvo de volume dos sons (LUFS)">
+              <Select
+                aria-label="Alvo de volume dos sons"
+                value={String(settings.voiceTargetLufs)}
+                options={[
+                  { value: "-23", label: "-23 LUFS (suave)" },
+                  { value: "-16", label: "-16 LUFS (padrão)" },
+                  { value: "-14", label: "-14 LUFS (streaming)" },
+                  { value: "-11", label: "-11 LUFS (alto)" },
+                ]}
+                onChange={async (next) => {
+                  try {
+                    await api.setVoiceTargetLufs(Number(next));
+                    await hydrate();
+                    push({
+                      kind: "info",
+                      message: "Novos sons importados vão normalizar para este alvo",
+                    });
+                  } catch (err) {
+                    push({ kind: "error", message: String(err) });
+                  }
+                }}
+              />
+            </Field>
             <Field label="Microfone virtual">
               <Select
                 aria-label="Microfone virtual"
