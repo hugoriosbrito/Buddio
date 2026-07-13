@@ -2,6 +2,7 @@
   <img src="src/assets/brand/app-icon.png" width="112" alt="Logo do Buddio" />
 
   <h1>Buddio</h1>
+  <p><em>Por Hugo Rios</em></p>
 
   <p><strong>Seus sons. Qualquer atalho. Qualquer chamada.</strong></p>
   <p>Um soundboard offline-first para o seu desktop: importe um som, associe um atalho<br/>
@@ -94,7 +95,7 @@ instalados. No Windows, também é necessário o
 com o workload **Desktop development with C++** (para MSVC + WebView2).
 
 ```bash
-git clone https://github.com/<seu-usuario>/buddio.git
+git clone https://github.com/hugoriosbrito/Buddio.git
 cd buddio
 bun install
 bun run tauri dev
@@ -146,7 +147,7 @@ bun run tauri build
 ```text
 src/                        # UI em React
 src-tauri/                  # App Tauri, managers e commands
-  resources/samples/        # Amostra de áudio de teste embutida (sound-test-sample.mp3)
+  resources/samples/        # Amostra de áudio de teste embutida (sound-test-sample.wav)
 crates/audio-engine/        # Motor de reprodução (independente do Tauri, testável isoladamente)
 docs/architecture/          # Como as peças se encaixam
 docs/design/                # Design system, especificação de UX e exports de referência do Figma

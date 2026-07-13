@@ -2,6 +2,7 @@
   <img src="src/assets/brand/app-icon.png" width="112" alt="Buddio logo" />
 
   <h1>Buddio</h1>
+  <p><em>By Hugo Rios</em></p>
 
   <p><strong>Your sounds. Any shortcut. Any call.</strong></p>
   <p>An offline-first soundboard for your desktop: import a clip, bind a hotkey,<br/>
@@ -92,7 +93,7 @@ Windows, you'll also need the
 with the **Desktop development with C++** workload (for MSVC + WebView2).
 
 ```bash
-git clone https://github.com/<your-org>/buddio.git
+git clone https://github.com/hugoriosbrito/Buddio.git
 cd buddio
 bun install
 bun run tauri dev
@@ -144,7 +145,7 @@ bun run tauri build
 ```text
 src/                        # React UI
 src-tauri/                  # Tauri app, managers, and commands
-  resources/samples/        # Bundled audio test sample (sound-test-sample.mp3)
+  resources/samples/        # Bundled audio test sample (sound-test-sample.wav)
 crates/audio-engine/        # Playback engine (Tauri-independent, unit-testable)
 docs/architecture/          # How the pieces fit together
 docs/design/                # Design system, UX spec, and Figma reference exports
