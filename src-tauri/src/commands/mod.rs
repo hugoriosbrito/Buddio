@@ -391,18 +391,26 @@ pub fn set_output_devices(
     state: State<'_, AppState>,
     config: OutputDevicesConfig,
 ) -> CmdResult<()> {
+    let devices = virtual_cable::list_output_names().map_err(map_err)?;
+    let (monitor_enabled, monitor) = virtual_cable::sanitize_monitor_for_virtual_secondary(
+        &devices,
+        config.monitor_enabled,
+        config.monitor.clone(),
+        config.secondary.as_deref(),
+    );
+
     state
         .audio
         .send(audio_engine::AudioCommand::SetOutputs {
-            monitor_enabled: config.monitor_enabled,
-            monitor: config.monitor.clone(),
+            monitor_enabled,
+            monitor: monitor.clone(),
             secondary: config.secondary.clone(),
         })
         .map_err(map_err)?;
 
     let mut settings = state.settings.load().map_err(map_err)?;
-    settings.monitor_enabled = config.monitor_enabled;
-    settings.monitor_device = config.monitor;
+    settings.monitor_enabled = monitor_enabled;
+    settings.monitor_device = monitor;
     settings.secondary_device = config.secondary;
     state.settings.save(&settings).map_err(map_err)
 }
@@ -660,8 +668,22 @@ pub fn get_diagnostics(state: State<'_, AppState>) -> CmdResult<DiagnosticsDto> 
         if let Some(ref name) = settings.monitor_device {
             if !devices.iter().any(|d| &d.name == name) {
                 warnings.push(format!("Monitor device not found: {name}"));
+            } else if virtual_cable::is_virtual_playback_name(name) {
+                warnings.push(format!(
+                    "Monitor '{name}' is a virtual cable pin — Buddio can't open two VB-CABLE pins at once (error 0x8889000A). Use real speakers/headphones for monitor."
+                ));
             }
         }
+    }
+    if settings
+        .secondary_device
+        .as_deref()
+        .is_some_and(virtual_cable::is_vb_cable_16ch_pin)
+    {
+        warnings.push(
+            "Secondary is the VB-CABLE 16 Ch pin — prefer the Speakers/CABLE Input pin; the 16 Ch pin can't share the driver with another CABLE endpoint"
+                .into(),
+        );
     } else {
         warnings.push("Monitor output is disabled".into());
     }
@@ -930,11 +952,22 @@ pub fn ensure_virtual_cable(
         .clone()
         .ok_or_else(|| "cabo virtual não encontrado após a instalação".to_string())?;
 
+    // After install Windows often makes VB-CABLE the default Speakers device.
+    // Monitor must be a *physical* output — opening Speakers (VB-Audio) + the
+    // 16 Ch pin (or any second VB-CABLE endpoint) together → 0x8889000A.
+    let devices = virtual_cable::list_output_names().map_err(map_err)?;
+    let (monitor_enabled, monitor) = virtual_cable::sanitize_monitor_for_virtual_secondary(
+        &devices,
+        settings.monitor_enabled,
+        settings.monitor_device.clone(),
+        Some(playback.as_str()),
+    );
+
     state
         .audio
         .send(audio_engine::AudioCommand::SetOutputs {
-            monitor_enabled: settings.monitor_enabled,
-            monitor: settings.monitor_device.clone(),
+            monitor_enabled,
+            monitor: monitor.clone(),
             secondary: Some(playback.clone()),
         })
         .map_err(map_err)?;
@@ -942,6 +975,8 @@ pub fn ensure_virtual_cable(
     // Persist via existing set_output_devices path
     let mut next = settings.clone();
     next.secondary_device = Some(playback.clone());
+    next.monitor_enabled = monitor_enabled;
+    next.monitor_device = monitor;
     state.settings.save(&next).map_err(map_err)?;
     state
         .settings

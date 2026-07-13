@@ -627,13 +627,21 @@ fn open_output_path(name: Option<&str>) -> Result<OutputPath, String> {
         .map(|c| (c.sample_rate().0, c.channels()))
         .unwrap_or((48_000, 2));
     let (stream, handle) =
-        OutputStream::try_from_device(&device).map_err(|e| format!("open stream: {e}"))?;
+        OutputStream::try_from_device(&device).map_err(|e| map_open_stream_error(&e.to_string()))?;
     Ok(OutputPath {
         _stream: stream,
         handle,
         sample_rate,
         channels,
     })
+}
+
+fn map_open_stream_error(raw: &str) -> String {
+    // WASAPI AUDCLNT_E_DEVICE_IN_USE — classic when both VB-CABLE pins are open.
+    if raw.contains("0x8889000A") || raw.to_ascii_lowercase().contains("device_in_use") {
+        return "open stream: dispositivo de áudio em uso (0x8889000A). No Windows 10/11 o VB-CABLE tem dois pins (Alto-falantes e CABLE In 16 Ch) que não podem abrir ao mesmo tempo — deixe o monitor nos fones/caixas reais e a saída da call só no CABLE Input.".into();
+    }
+    format!("open stream: {raw}")
 }
 
 #[allow(clippy::too_many_arguments)]

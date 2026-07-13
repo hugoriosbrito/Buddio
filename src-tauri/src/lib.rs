@@ -206,7 +206,39 @@ pub fn run() {
             let (audio, event_rx) = AudioEngineHandle::start();
 
             // Restore settings → audio engine
-            let loaded = settings.load().unwrap_or_default();
+            let mut loaded = settings.load().unwrap_or_default();
+            // Heal routes persisted while VB-CABLE was system-default / dual-pin.
+            if let Ok(devices) = crate::managers::virtual_cable::list_output_names() {
+                let mut dirty = false;
+                if loaded
+                    .secondary_device
+                    .as_deref()
+                    .is_some_and(crate::managers::virtual_cable::is_vb_cable_16ch_pin)
+                {
+                    if let Some(better) = crate::managers::virtual_cable::pick_virtual_playback(
+                        &devices,
+                        loaded.monitor_device.as_deref(),
+                    ) {
+                        loaded.secondary_device = Some(better);
+                        dirty = true;
+                    }
+                }
+                let (mon_on, mon) =
+                    crate::managers::virtual_cable::sanitize_monitor_for_virtual_secondary(
+                        &devices,
+                        loaded.monitor_enabled,
+                        loaded.monitor_device.clone(),
+                        loaded.secondary_device.as_deref(),
+                    );
+                if mon_on != loaded.monitor_enabled || mon != loaded.monitor_device {
+                    loaded.monitor_enabled = mon_on;
+                    loaded.monitor_device = mon;
+                    dirty = true;
+                }
+                if dirty {
+                    let _ = settings.save(&loaded);
+                }
+            }
             let _ = audio.send(AudioCommand::SetMasterVolume(loaded.master_volume));
             let _ = audio.send(AudioCommand::SetOutputs {
                 monitor_enabled: loaded.monitor_enabled,

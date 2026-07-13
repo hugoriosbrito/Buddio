@@ -46,12 +46,38 @@ pub fn is_virtual_playback_name(name: &str) -> bool {
         || (n.contains("virtual") && (n.contains("cable") || n.contains("line")))
 }
 
+/// Win10/11 VB-CABLE exposes **two** playback pins on the same driver:
+/// the Speakers / CABLE Input pin (≤8 ch) and a Line-Out "16 Ch" pin.
+/// Official manual: both pins **cannot be opened at the same time** —
+/// doing so returns WASAPI `AUDCLNT_E_DEVICE_IN_USE` (`0x8889000A`).
+pub fn is_vb_cable_16ch_pin(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    let looks_cable = n.contains("vb-audio") || n.contains("cable");
+    if !looks_cable {
+        return false;
+    }
+    (n.contains("16") && (n.contains("ch") || n.contains("channel")))
+        || n.contains("line out")
+        || n.contains("lineout")
+}
+
+/// Prefer the stereo Speakers / `CABLE Input` pin; avoid the exclusive 16 Ch pin
+/// unless it's the only virtual playback device present.
 pub fn pick_virtual_playback(devices: &[(String, bool)], monitor: Option<&str>) -> Option<String> {
-    let candidates: Vec<&str> = devices
+    let all: Vec<&str> = devices
         .iter()
         .map(|(n, _)| n.as_str())
         .filter(|n| Some(*n) != monitor && is_virtual_playback_name(n))
         .collect();
+
+    let preferred: Vec<&str> = all
+        .iter()
+        .copied()
+        // Opening Speakers + 16 Ch of the same VB-CABLE → 0x8889000A.
+        .filter(|n| !is_vb_cable_16ch_pin(n))
+        .collect();
+
+    let candidates = if preferred.is_empty() { all } else { preferred };
 
     candidates
         .iter()
@@ -60,12 +86,80 @@ pub fn pick_virtual_playback(devices: &[(String, bool)], monitor: Option<&str>) 
             l.contains("cable input") || l.contains("cabel input")
         })
         .or_else(|| {
+            // Win10/11 first pin is often "Speakers / Alto-falantes (VB-Audio…)".
+            candidates.iter().find(|n| {
+                let l = n.to_ascii_lowercase();
+                l.contains("vb-audio")
+                    && (l.contains("speakers")
+                        || l.contains("alto-falantes")
+                        || l.contains("haut-parleurs")
+                        || l.contains("lautsprecher"))
+            })
+        })
+        .or_else(|| {
+            candidates.iter().find(|n| {
+                let l = n.to_ascii_lowercase();
+                l.contains("vb-audio") && l.contains("cable") && !l.contains("output")
+            })
+        })
+        .or_else(|| {
             candidates
                 .iter()
                 .find(|n| n.to_ascii_lowercase().contains("vb-audio"))
         })
         .or_else(|| candidates.first())
         .map(|s| (*s).to_string())
+}
+
+/// Real speakers/headphones for the monitor path — never a VB-CABLE / Voicemeeter pin.
+///
+/// After install, Windows often makes VB-CABLE the *default* playback device. If
+/// Buddio then opens default as monitor **and** another VB-CABLE pin as secondary,
+/// WASAPI returns `0x8889000A` on every play.
+pub fn pick_physical_monitor(
+    devices: &[(String, bool)],
+    preferred: Option<&str>,
+) -> Option<String> {
+    if let Some(p) = preferred {
+        if !is_virtual_playback_name(p) && devices.iter().any(|(n, _)| n == p) {
+            return Some(p.to_string());
+        }
+    }
+    devices
+        .iter()
+        .find(|(n, is_default)| *is_default && !is_virtual_playback_name(n))
+        .or_else(|| {
+            devices
+                .iter()
+                .find(|(n, _)| !is_virtual_playback_name(n))
+        })
+        .map(|(n, _)| n.clone())
+}
+
+/// When secondary is a virtual cable, force monitor onto a physical device so
+/// we never open Speakers + 16 Ch (or default-is-CABLE + secondary) together.
+pub fn sanitize_monitor_for_virtual_secondary(
+    devices: &[(String, bool)],
+    monitor_enabled: bool,
+    monitor: Option<String>,
+    secondary: Option<&str>,
+) -> (bool, Option<String>) {
+    let Some(sec) = secondary.filter(|s| is_virtual_playback_name(s)) else {
+        return (monitor_enabled, monitor);
+    };
+    let monitor_is_bad = match monitor.as_deref() {
+        Some(m) if is_virtual_playback_name(m) || m == sec || is_vb_cable_16ch_pin(m) => true,
+        Some(_) => false,
+        // `None` means system default — often VB-CABLE right after install.
+        None => devices
+            .iter()
+            .any(|(n, is_default)| *is_default && is_virtual_playback_name(n)),
+    };
+    if !monitor_is_bad && monitor_enabled {
+        return (monitor_enabled, monitor);
+    }
+    let physical = pick_physical_monitor(devices, monitor.as_deref());
+    (true, physical)
 }
 
 pub fn capture_hint_for(playback: Option<&str>) -> String {
@@ -469,5 +563,75 @@ mod tests {
         assert!(!is_virtual_playback_name(
             "Alto-falantes (Realtek(R) Audio)"
         ));
+    }
+
+    #[test]
+    fn prefers_speakers_pin_over_16ch() {
+        // Win10/11 VB-CABLE: Speakers pin + Line-Out 16 Ch — only one may be open.
+        let devices = vec![
+            ("Alto-falantes (Realtek(R) Audio)".into(), true),
+            ("Alto-falantes (VB-Audio Virtual Cable)".into(), false),
+            ("CABLE In 16 Ch (VB-Audio Virtual Cable)".into(), false),
+        ];
+        let picked = pick_virtual_playback(&devices, Some("Alto-falantes (Realtek(R) Audio)"));
+        assert_eq!(
+            picked.as_deref(),
+            Some("Alto-falantes (VB-Audio Virtual Cable)")
+        );
+        assert!(is_vb_cable_16ch_pin(
+            "CABLE In 16 Ch (VB-Audio Virtual Cable)"
+        ));
+    }
+
+    #[test]
+    fn falls_back_to_16ch_only_when_no_stereo_pin() {
+        let devices = vec![
+            ("Alto-falantes (Realtek(R) Audio)".into(), true),
+            ("CABLE In 16 Ch (VB-Audio Virtual Cable)".into(), false),
+        ];
+        assert_eq!(
+            pick_virtual_playback(&devices, None).as_deref(),
+            Some("CABLE In 16 Ch (VB-Audio Virtual Cable)")
+        );
+    }
+
+    #[test]
+    fn sanitizes_monitor_when_default_is_vb_cable() {
+        let devices = vec![
+            ("Alto-falantes (VB-Audio Virtual Cable)".into(), true),
+            ("CABLE Input (VB-Audio Virtual Cable)".into(), false),
+            ("Fones de ouvido (Realtek(R) Audio)".into(), false),
+        ];
+        let (enabled, monitor) = sanitize_monitor_for_virtual_secondary(
+            &devices,
+            true,
+            None, // "system default" — which is VB-CABLE after install
+            Some("CABLE Input (VB-Audio Virtual Cable)"),
+        );
+        assert!(enabled);
+        assert_eq!(
+            monitor.as_deref(),
+            Some("Fones de ouvido (Realtek(R) Audio)")
+        );
+    }
+
+    #[test]
+    fn sanitizes_monitor_when_explicitly_on_other_cable_pin() {
+        let devices = vec![
+            ("Alto-falantes (Realtek(R) Audio)".into(), true),
+            ("Alto-falantes (VB-Audio Virtual Cable)".into(), false),
+            ("CABLE In 16 Ch (VB-Audio Virtual Cable)".into(), false),
+        ];
+        let (enabled, monitor) = sanitize_monitor_for_virtual_secondary(
+            &devices,
+            true,
+            Some("Alto-falantes (VB-Audio Virtual Cable)".into()),
+            Some("CABLE In 16 Ch (VB-Audio Virtual Cable)"),
+        );
+        assert!(enabled);
+        assert_eq!(
+            monitor.as_deref(),
+            Some("Alto-falantes (Realtek(R) Audio)")
+        );
     }
 }

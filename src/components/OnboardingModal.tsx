@@ -68,15 +68,33 @@ export function isLoopbackCaptureName(name: string): boolean {
   );
 }
 
+export function isVbCable16ChPin(name: string): boolean {
+  const n = name.toLowerCase();
+  const looksCable = n.includes("vb-audio") || n.includes("cable");
+  if (!looksCable) return false;
+  return (
+    (n.includes("16") && (n.includes("ch") || n.includes("channel"))) ||
+    n.includes("line out") ||
+    n.includes("lineout")
+  );
+}
+
 export function pickVirtualCandidate(
   devices: Array<{ name: string }>,
   monitorDevice: string | null,
 ): { name: string } | null {
   const candidates = devices.filter(
-    (d) => isVirtualDeviceName(d.name) && d.name !== monitorDevice,
+    (d) =>
+      isVirtualDeviceName(d.name) &&
+      d.name !== monitorDevice &&
+      !isVbCable16ChPin(d.name),
   );
   return (
     candidates.find((d) => /cable input/i.test(d.name)) ??
+    candidates.find((d) =>
+      /vb-?audio/i.test(d.name) &&
+      /speakers|alto-falantes|haut-parleurs|lautsprecher/i.test(d.name),
+    ) ??
     candidates.find((d) => /vb-?audio|voicemeeter/i.test(d.name)) ??
     candidates[0] ??
     null
@@ -91,6 +109,8 @@ export function isValidVirtualSecondary(
   if (!secondary) return false;
   if (secondary === monitorDevice) return false;
   if (!isVirtualDeviceName(secondary)) return false;
+  // Monitor must not be another VB-CABLE pin (dual-pin → 0x8889000A).
+  if (monitorDevice && isVirtualDeviceName(monitorDevice)) return false;
   return devices.some((d) => d.name === secondary);
 }
 
@@ -123,7 +143,8 @@ export function analyzeRouteHealth(args: {
 
   const monitorOk =
     monitorEnabled &&
-    (!monitorDevice || devices.some((d) => d.name === monitorDevice));
+    (!monitorDevice || devices.some((d) => d.name === monitorDevice)) &&
+    !(monitorDevice && isVirtualDeviceName(monitorDevice));
   const virtualOk = isValidVirtualSecondary(
     secondaryDevice,
     monitorDevice,
@@ -157,11 +178,17 @@ export function analyzeRouteHealth(args: {
         "Há um cabo virtual no sistema, mas ele ainda não foi selecionado como saída secundária.";
     }
   } else if (!monitorOk) {
-    failureTitle = monitorDevice
-      ? `${monitorDevice} indisponível`
-      : "Monitor desativado";
-    failureDetail =
-      "O dispositivo de monitor pode estar desativado nas configurações de som do Windows.";
+    if (monitorDevice && isVirtualDeviceName(monitorDevice)) {
+      failureTitle = "Monitor no pin do VB-CABLE";
+      failureDetail =
+        "No Windows 10/11 o VB-CABLE tem dois pins (Alto-falantes e CABLE In 16 Ch) que não podem abrir juntos. Escolha fones ou caixas reais no monitor — a saída da call fica só no CABLE.";
+    } else {
+      failureTitle = monitorDevice
+        ? `${monitorDevice} indisponível`
+        : "Monitor desativado";
+      failureDetail =
+        "O dispositivo de monitor pode estar desativado nas configurações de som do Windows.";
+    }
   } else if ((diagnostics?.warnings.length ?? 0) > 0) {
     failureTitle = "Diagnóstico encontrou avisos";
     failureDetail = diagnostics!.warnings[0]!;
