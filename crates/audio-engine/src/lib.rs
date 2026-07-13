@@ -26,8 +26,8 @@ pub use error::{AudioError, Result};
 pub use event::AudioEvent;
 pub use handle::AudioEngineHandle;
 pub use loudness::{
-    analyze_clip, combined_gain_linear, estimate_head_lufs, estimate_integrated_lufs,
-    norm_gain_db, DEFAULT_VOICE_TARGET_LUFS,
+    analyze_clip, combined_gain_linear, estimate_head_lufs, estimate_integrated_lufs, norm_gain_db,
+    DEFAULT_VOICE_TARGET_LUFS,
 };
 pub use mic_meter::{list_input_devices, InputDeviceInfo, MicMeter};
 pub use mic_route::MicRouteMode;

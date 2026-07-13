@@ -112,7 +112,8 @@ impl CollectionsManager {
         }
 
         drop(conn);
-        self.get(id)?.with_context(|| format!("collection {id} not found"))
+        self.get(id)?
+            .with_context(|| format!("collection {id} not found"))
     }
 
     pub fn delete(&self, id: &str) -> Result<()> {
@@ -149,10 +150,7 @@ impl CollectionsManager {
             }
         }
 
-        conn.execute(
-            "DELETE FROM collection_clips WHERE clip_id = ?1",
-            [clip_id],
-        )?;
+        conn.execute("DELETE FROM collection_clips WHERE clip_id = ?1", [clip_id])?;
         for collection_id in collection_ids {
             conn.execute(
                 "INSERT INTO collection_clips (collection_id, clip_id) VALUES (?1, ?2)",

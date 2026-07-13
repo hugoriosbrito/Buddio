@@ -79,7 +79,9 @@ mod tests {
 
     #[test]
     fn louder_signal_has_higher_lufs() {
-        let quiet: Vec<f32> = (0..4800).map(|i| ((i as f32) * 0.01).sin() * 0.05).collect();
+        let quiet: Vec<f32> = (0..4800)
+            .map(|i| ((i as f32) * 0.01).sin() * 0.05)
+            .collect();
         let loud: Vec<f32> = (0..4800).map(|i| ((i as f32) * 0.01).sin() * 0.5).collect();
         assert!(estimate_integrated_lufs(&loud, 1) > estimate_integrated_lufs(&quiet, 1));
     }
@@ -87,9 +89,7 @@ mod tests {
     #[test]
     fn norm_gain_moves_toward_target() {
         let clip = DecodedClip::from_pcm(
-            (0..4800)
-                .map(|i| ((i as f32) * 0.01).sin() * 0.1)
-                .collect(),
+            (0..4800).map(|i| ((i as f32) * 0.01).sin() * 0.1).collect(),
             48_000,
             1,
         );

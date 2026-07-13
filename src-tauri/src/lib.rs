@@ -280,9 +280,12 @@ pub fn run() {
             }
 
             // System tray → Buddio Mini
-            let show_mini_item = MenuItem::with_id(app, "show_mini", "Abrir Buddio Mini", true, None::<&str>)?;
-            let show_main_item = MenuItem::with_id(app, "show_main", "Abrir Buddio", true, None::<&str>)?;
-            let stop_all_item = MenuItem::with_id(app, "stop_all", "Parar tudo", true, None::<&str>)?;
+            let show_mini_item =
+                MenuItem::with_id(app, "show_mini", "Abrir Buddio Mini", true, None::<&str>)?;
+            let show_main_item =
+                MenuItem::with_id(app, "show_main", "Abrir Buddio", true, None::<&str>)?;
+            let stop_all_item =
+                MenuItem::with_id(app, "stop_all", "Parar tudo", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
             let menu = Menu::with_items(
                 app,

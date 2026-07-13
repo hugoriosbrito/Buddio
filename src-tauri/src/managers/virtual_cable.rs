@@ -46,10 +46,7 @@ pub fn is_virtual_playback_name(name: &str) -> bool {
         || (n.contains("virtual") && (n.contains("cable") || n.contains("line")))
 }
 
-pub fn pick_virtual_playback(
-    devices: &[(String, bool)],
-    monitor: Option<&str>,
-) -> Option<String> {
+pub fn pick_virtual_playback(devices: &[(String, bool)], monitor: Option<&str>) -> Option<String> {
     let candidates: Vec<&str> = devices
         .iter()
         .map(|(n, _)| n.as_str())
@@ -100,9 +97,7 @@ pub fn build_status(
     let installed = playback.is_some();
     let configured = secondary
         .map(|s| {
-            is_virtual_playback_name(s)
-                && Some(s) != monitor
-                && devices.iter().any(|(n, _)| n == s)
+            is_virtual_playback_name(s) && Some(s) != monitor && devices.iter().any(|(n, _)| n == s)
         })
         .unwrap_or(false);
 
@@ -270,7 +265,9 @@ fn flatten_single_nested_dir(pack_dir: &Path) -> Result<()> {
                 fs::create_dir_all(parent)?;
             }
             fs::rename(&entry, &target).or_else(|_| {
-                fs::copy(&entry, &target).map(|_| ()).and_then(|_| fs::remove_file(&entry))
+                fs::copy(&entry, &target)
+                    .map(|_| ())
+                    .and_then(|_| fs::remove_file(&entry))
             })?;
         }
         let _ = fs::remove_dir_all(nested);
@@ -349,14 +346,12 @@ fn run_elevated_install(setup: &Path, pack_dir: &Path) -> Result<ElevatedOutcome
     let setup_s = native_path(setup);
     let pack_s = native_path(pack_dir);
     let cer = pack_dir.join("vbcable-publisher.cer");
-    let cat = walkdir(pack_dir)?
-        .into_iter()
-        .find(|p| {
-            p.extension()
-                .and_then(|e| e.to_str())
-                .map(|e| e.eq_ignore_ascii_case("cat"))
-                .unwrap_or(false)
-        });
+    let cat = walkdir(pack_dir)?.into_iter().find(|p| {
+        p.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("cat"))
+            .unwrap_or(false)
+    });
 
     // Export publisher cert without elevation (read-only).
     if let Some(cat) = cat {
@@ -413,7 +408,13 @@ fn run_elevated_install(setup: &Path, pack_dir: &Path) -> Result<ElevatedOutcome
     );
 
     let status = Command::new("powershell")
-        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &launcher])
+        .args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &launcher,
+        ])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
@@ -465,6 +466,8 @@ mod tests {
 
     #[test]
     fn rejects_speakers() {
-        assert!(!is_virtual_playback_name("Alto-falantes (Realtek(R) Audio)"));
+        assert!(!is_virtual_playback_name(
+            "Alto-falantes (Realtek(R) Audio)"
+        ));
     }
 }

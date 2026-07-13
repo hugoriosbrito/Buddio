@@ -108,7 +108,10 @@ impl HotkeyManager {
             }
             let action = actions.lock().get(&event.id).cloned();
             let Some(action) = action else {
-                eprintln!("[buddio] hotkey id={} pressed but no action mapped", event.id);
+                eprintln!(
+                    "[buddio] hotkey id={} pressed but no action mapped",
+                    event.id
+                );
                 return;
             };
             dispatch_action(&app_handle, &action, &index_clip_ids);
@@ -244,11 +247,7 @@ impl HotkeyManager {
     ///
     /// `collection_id`: when `Some`, only clips in that collection (ordered by position);
     /// when `None`, all clips ordered by position.
-    pub fn sync_index_hotkeys(
-        &self,
-        app: &AppHandle,
-        collection_id: Option<String>,
-    ) -> Result<()> {
+    pub fn sync_index_hotkeys(&self, app: &AppHandle, collection_id: Option<String>) -> Result<()> {
         *self.index_collection_id.lock() = collection_id.clone();
 
         // Drop previous index-only accelerators (leave clip / stop-all bindings).
@@ -508,7 +507,9 @@ impl HotkeyManager {
 
         if is_mouse_accelerator(&normalized) {
             // Matched by the rdev listener thread, not RegisterHotKey.
-            self.mouse_bindings.lock().insert(normalized.clone(), action);
+            self.mouse_bindings
+                .lock()
+                .insert(normalized.clone(), action);
             info!(hotkey = %normalized, "registered mouse hotkey");
             eprintln!("[buddio] registered mouse hotkey={normalized}");
             return Ok(());
@@ -633,7 +634,11 @@ impl HotkeyManager {
 /// on Windows, unwinding across an OS/FFI callback boundary is undefined
 /// behavior and can abort the whole process instead of just this one hotkey
 /// press. Catch it, log it, and keep the listener alive for the next press.
-fn dispatch_action(app: &AppHandle, action: &HotkeyAction, index_clip_ids: &Arc<Mutex<Vec<String>>>) {
+fn dispatch_action(
+    app: &AppHandle,
+    action: &HotkeyAction,
+    index_clip_ids: &Arc<Mutex<Vec<String>>>,
+) {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         dispatch_action_inner(app, action, index_clip_ids);
     }));
@@ -648,7 +653,11 @@ fn dispatch_action(app: &AppHandle, action: &HotkeyAction, index_clip_ids: &Arc<
     }
 }
 
-fn dispatch_action_inner(app: &AppHandle, action: &HotkeyAction, index_clip_ids: &Arc<Mutex<Vec<String>>>) {
+fn dispatch_action_inner(
+    app: &AppHandle,
+    action: &HotkeyAction,
+    index_clip_ids: &Arc<Mutex<Vec<String>>>,
+) {
     match action {
         HotkeyAction::PlayClip(clip_id) => {
             eprintln!("[buddio] HOTKEY FIRED clip={clip_id}");
@@ -687,7 +696,14 @@ fn dispatch_action_inner(app: &AppHandle, action: &HotkeyAction, index_clip_ids:
 }
 
 /// Track Ctrl/Alt/Shift/Meta state from raw rdev key events.
-fn set_modifier(key: rdev::Key, pressed: bool, ctrl: &mut bool, alt: &mut bool, shift: &mut bool, meta: &mut bool) {
+fn set_modifier(
+    key: rdev::Key,
+    pressed: bool,
+    ctrl: &mut bool,
+    alt: &mut bool,
+    shift: &mut bool,
+    meta: &mut bool,
+) {
     match key {
         rdev::Key::ControlLeft | rdev::Key::ControlRight => *ctrl = pressed,
         rdev::Key::ShiftLeft | rdev::Key::ShiftRight => *shift = pressed,
@@ -785,25 +801,21 @@ pub fn normalize_shortcut(raw: &str) -> String {
                         } else {
                             format!("Mouse{digits}")
                         }
-                    } else if other.starts_with("numpad") {
+                    } else if let Some(rest) = other.strip_prefix("numpad") {
                         // Keep Numpad1 style for global-hotkey parse_key.
-                        let rest = &other["numpad".len()..];
                         if rest.chars().all(|c| c.is_ascii_digit()) && !rest.is_empty() {
                             format!("Numpad{rest}")
                         } else {
                             // NumpadAdd, etc. — title-case first letter of each camel segment
-                            format!(
-                                "Numpad{}",
-                                {
-                                    let mut chars = rest.chars();
-                                    match chars.next() {
-                                        Some(c) => {
-                                            format!("{}{}", c.to_ascii_uppercase(), chars.as_str())
-                                        }
-                                        None => String::new(),
+                            format!("Numpad{}", {
+                                let mut chars = rest.chars();
+                                match chars.next() {
+                                    Some(c) => {
+                                        format!("{}{}", c.to_ascii_uppercase(), chars.as_str())
                                     }
+                                    None => String::new(),
                                 }
-                            )
+                            })
                         }
                     } else {
                         match other {

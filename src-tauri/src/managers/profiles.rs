@@ -132,10 +132,7 @@ impl ProfilesManager {
             }
             if let Some(true) = update.is_default {
                 conn.execute("UPDATE profiles SET is_default = 0", [])?;
-                conn.execute(
-                    "UPDATE profiles SET is_default = 1 WHERE id = ?1",
-                    [id],
-                )?;
+                conn.execute("UPDATE profiles SET is_default = 1 WHERE id = ?1", [id])?;
             }
         }
 
@@ -146,11 +143,9 @@ impl ProfilesManager {
     pub fn delete(&self, id: &str) -> Result<()> {
         let conn = self.conn.lock();
         let profile = conn
-            .query_row(
-                "SELECT is_default FROM profiles WHERE id = ?1",
-                [id],
-                |r| r.get::<_, i64>(0),
-            )
+            .query_row("SELECT is_default FROM profiles WHERE id = ?1", [id], |r| {
+                r.get::<_, i64>(0)
+            })
             .optional()?;
         let Some(is_default) = profile else {
             bail!("profile {id} not found");

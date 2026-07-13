@@ -76,8 +76,9 @@ impl LibraryManager {
     pub fn list_clips(&self) -> Result<Vec<ClipDto>> {
         let conn = self.conn.lock();
         let mut clips = {
-            let mut stmt =
-                conn.prepare(&format!("{CLIP_SELECT} ORDER BY position ASC, created_at ASC"))?;
+            let mut stmt = conn.prepare(&format!(
+                "{CLIP_SELECT} ORDER BY position ASC, created_at ASC"
+            ))?;
             let rows = stmt.query_map([], map_clip_row)?;
             let mut clips = Vec::new();
             for row in rows {
@@ -95,11 +96,7 @@ impl LibraryManager {
     pub fn get_clip(&self, id: &str) -> Result<Option<ClipDto>> {
         let conn = self.conn.lock();
         let mut clip = conn
-            .query_row(
-                &format!("{CLIP_SELECT} WHERE id = ?1"),
-                [id],
-                map_clip_row,
-            )
+            .query_row(&format!("{CLIP_SELECT} WHERE id = ?1"), [id], map_clip_row)
             .optional()
             .context("get clip")?;
         if let Some(ref mut c) = clip {
@@ -201,7 +198,7 @@ impl LibraryManager {
 
         for path in paths {
             match self.import_one(path) {
-                Ok(ImportOutcome::Imported(clip)) => imported.push(clip),
+                Ok(ImportOutcome::Imported(clip)) => imported.push(*clip),
                 Ok(ImportOutcome::Duplicate(name)) => duplicates.push(name),
                 Err(err) => errors.push(format!("{}: {err:#}", path.display())),
             }
@@ -292,7 +289,7 @@ impl LibraryManager {
         info!(%id, %name, "imported clip");
         let clip = self.get_clip(&id)?.context("clip missing after insert")?;
         debug!(position, duration_ms, "clip metadata");
-        Ok(ImportOutcome::Imported(clip))
+        Ok(ImportOutcome::Imported(Box::new(clip)))
     }
 
     pub fn update_clip(&self, id: &str, update: ClipUpdate) -> Result<ClipDto> {
@@ -336,10 +333,7 @@ impl LibraryManager {
         if let Some(trim_end_ms) = update.trim_end_ms {
             // Negative sentinel clears trim end (full duration).
             if trim_end_ms < 0 {
-                conn.execute(
-                    "UPDATE clips SET trim_end_ms = NULL WHERE id = ?1",
-                    [id],
-                )?;
+                conn.execute("UPDATE clips SET trim_end_ms = NULL WHERE id = ?1", [id])?;
             } else {
                 conn.execute(
                     "UPDATE clips SET trim_end_ms = ?1 WHERE id = ?2",
@@ -449,7 +443,8 @@ impl LibraryManager {
 }
 
 enum ImportOutcome {
-    Imported(ClipDto),
+    // Boxed: ClipDto is much larger than the Duplicate(String) variant.
+    Imported(Box<ClipDto>),
     Duplicate(String),
 }
 

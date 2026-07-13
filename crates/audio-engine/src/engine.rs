@@ -453,16 +453,9 @@ impl EngineState {
             }
         }
         let clip = DecodedClip::from_pcm(pcm, rate, channels);
-        if let Some(sink) = try_start_sink(
-            &secondary.handle,
-            &clip,
-            false,
-            1.0,
-            0.0,
-            None,
-            None,
-            None,
-        ) {
+        if let Some(sink) =
+            try_start_sink(&secondary.handle, &clip, false, 1.0, 0.0, None, None, None)
+        {
             // Fire-and-forget: keep sink alive until empty via a short sleep is
             // avoided — attach under a reserved id that poll_finished cleans up.
             self.playing.insert(

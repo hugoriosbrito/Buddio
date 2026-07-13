@@ -91,7 +91,9 @@ mod tests {
         let suggested = suggest_auto_hotkeys(vec!["Ctrl+Alt+1".into()], 3);
         assert_eq!(suggested.len(), 3);
         assert!(!suggested.iter().any(|s| is_fragile_accelerator(s)));
-        assert!(!suggested.iter().any(|s| s == &normalize_shortcut("Ctrl+Alt+1")));
+        assert!(!suggested
+            .iter()
+            .any(|s| s == &normalize_shortcut("Ctrl+Alt+1")));
         assert_eq!(suggested[0], normalize_shortcut("CommandOrControl+Alt+2"));
     }
 

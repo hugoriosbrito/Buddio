@@ -169,10 +169,7 @@ impl SettingsManager {
             KEY_VAD_SOUND,
             if settings.vad_sound_enabled { "1" } else { "0" },
         )?;
-        self.set(
-            KEY_VOICE_TARGET,
-            &settings.voice_target_lufs.to_string(),
-        )?;
+        self.set(KEY_VOICE_TARGET, &settings.voice_target_lufs.to_string())?;
         self.set(
             KEY_INDEX_HOTKEYS,
             if settings.index_hotkeys_enabled {

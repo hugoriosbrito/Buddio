@@ -101,11 +101,9 @@ impl FolderWatchManager {
         if let Some(ref cid) = collection_id {
             let conn = self.conn.lock();
             let exists: Option<String> = conn
-                .query_row(
-                    "SELECT id FROM collections WHERE id = ?1",
-                    [cid],
-                    |r| r.get(0),
-                )
+                .query_row("SELECT id FROM collections WHERE id = ?1", [cid], |r| {
+                    r.get(0)
+                })
                 .optional()?;
             if exists.is_none() {
                 bail!("collection {cid} not found");
@@ -128,7 +126,8 @@ impl FolderWatchManager {
             .context("watched folder missing after insert")?;
 
         // Initial scan of existing files, then start/resync watcher.
-        let import = self.import_under(&PathBuf::from(&folder.path), folder.collection_id.clone())?;
+        let import =
+            self.import_under(&PathBuf::from(&folder.path), folder.collection_id.clone())?;
         self.request_resync();
         info!(path = %folder.path, "watched folder added");
         Ok((folder, import))
@@ -266,13 +265,7 @@ impl FolderWatchManager {
                         Err(RecvTimeoutError::Timeout) => {
                             if !pending.is_empty() {
                                 let paths: Vec<PathBuf> = pending.drain().collect();
-                                flush_pending(
-                                    &app,
-                                    &library,
-                                    &collections,
-                                    &roots,
-                                    &paths,
-                                );
+                                flush_pending(&app, &library, &collections, &roots, &paths);
                             }
                         }
                         Err(RecvTimeoutError::Disconnected) => break,
@@ -285,11 +278,7 @@ impl FolderWatchManager {
     }
 
     /// Import audio under a path and assign collection / load into the audio engine when `app` is set.
-    pub fn import_under(
-        &self,
-        dir: &Path,
-        collection_id: Option<String>,
-    ) -> Result<ImportResult> {
+    pub fn import_under(&self, dir: &Path, collection_id: Option<String>) -> Result<ImportResult> {
         let paths = library::collect_audio_files(dir)?;
         let result = self.library.import_paths(&paths)?;
         if let Some(ref cid) = collection_id {
@@ -304,9 +293,8 @@ impl FolderWatchManager {
 }
 
 fn load_enabled_roots_locked(conn: &Connection) -> Result<Vec<(PathBuf, Option<String>)>> {
-    let mut stmt = conn.prepare(
-        "SELECT path, collection_id FROM watched_folders WHERE enabled = 1",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT path, collection_id FROM watched_folders WHERE enabled = 1")?;
     let rows = stmt.query_map([], |row| {
         Ok((
             PathBuf::from(row.get::<_, String>(0)?),
@@ -344,10 +332,7 @@ fn apply_watches(
     *watching = next;
 }
 
-fn collection_for_path(
-    roots: &[(PathBuf, Option<String>)],
-    path: &Path,
-) -> Option<String> {
+fn collection_for_path(roots: &[(PathBuf, Option<String>)], path: &Path) -> Option<String> {
     let mut best: Option<(usize, Option<String>)> = None;
     for (root, cid) in roots {
         if path.starts_with(root) {

@@ -7,10 +7,8 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::fake_devices;
 use crate::managers::library::play_command_for_clip;
-use crate::managers::virtual_cable::{
-    self, VirtualCableEnsureResult, VirtualCableStatusDto,
-};
 use crate::managers::library::{self, SUPPORTED_EXTS};
+use crate::managers::virtual_cable::{self, VirtualCableEnsureResult, VirtualCableStatusDto};
 use crate::models::{
     AppSettings, ClipDto, ClipUpdate, CollectionDto, CollectionUpdate, DiagnosticsDto,
     ImportResult, InputDeviceDto, MicRouteModeDto, OutputDeviceDto, OutputDevicesConfig,
@@ -239,9 +237,7 @@ fn resolve_test_sample_path(app: &AppHandle) -> CmdResult<PathBuf> {
     }
 
     // Dev / `cargo run`: file lives next to the Tauri crate manifest.
-    candidates.push(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(TEST_SAMPLE_REL),
-    );
+    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(TEST_SAMPLE_REL));
 
     for path in &candidates {
         if path.is_file() {
@@ -372,10 +368,7 @@ pub fn list_input_devices() -> CmdResult<Vec<InputDeviceDto>> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn start_mic_meter(
-    state: State<'_, AppState>,
-    device_name: Option<String>,
-) -> CmdResult<()> {
+pub fn start_mic_meter(state: State<'_, AppState>, device_name: Option<String>) -> CmdResult<()> {
     state.mic_meter.start(device_name).map_err(map_err)
 }
 
@@ -495,10 +488,7 @@ pub fn suggest_auto_hotkeys(app: AppHandle, count: u32) -> CmdResult<Vec<String>
 
 #[tauri::command]
 #[specta::specta]
-pub fn sync_index_hotkeys(
-    app: AppHandle,
-    collection_id: Option<String>,
-) -> CmdResult<()> {
+pub fn sync_index_hotkeys(app: AppHandle, collection_id: Option<String>) -> CmdResult<()> {
     app.state::<AppState>()
         .hotkeys
         .sync_index_hotkeys(&app, collection_id)
@@ -629,8 +619,10 @@ pub fn apply_profile(state: State<'_, AppState>, id: String) -> CmdResult<Profil
     settings.secondary_device = profile.secondary_device.clone();
     settings.mic_route_mode = profile.mic_route_mode;
     settings.ducking_db = profile.ducking_db;
-    settings.mic_mix_enabled =
-        !matches!(profile.mic_route_mode, crate::models::MicRouteModeDto::SoundOnly);
+    settings.mic_mix_enabled = !matches!(
+        profile.mic_route_mode,
+        crate::models::MicRouteModeDto::SoundOnly
+    );
     settings.active_profile_id = Some(profile.id.clone());
     state.settings.save(&settings).map_err(map_err)?;
 
@@ -682,7 +674,11 @@ pub fn get_diagnostics(state: State<'_, AppState>) -> CmdResult<DiagnosticsDto> 
                 .into(),
         );
     }
-    if !state.settings.is_voice_target_calibrated().map_err(map_err)? {
+    if !state
+        .settings
+        .is_voice_target_calibrated()
+        .map_err(map_err)?
+    {
         warnings.push(
             "Voice loudness target was never set — clips normalize against a generic default instead of your voice"
                 .into(),
@@ -729,10 +725,7 @@ pub fn set_mic_route(
     mode: crate::models::MicRouteModeDto,
     ducking_db: Option<f32>,
 ) -> CmdResult<()> {
-    state
-        .settings
-        .set_mic_route_mode(mode)
-        .map_err(map_err)?;
+    state.settings.set_mic_route_mode(mode).map_err(map_err)?;
     if let Some(db) = ducking_db {
         state.settings.set_ducking_db(db).map_err(map_err)?;
     }
@@ -763,10 +756,7 @@ pub fn set_vad_sound(state: State<'_, AppState>, enabled: bool) -> CmdResult<()>
 #[tauri::command]
 #[specta::specta]
 pub fn set_voice_target_lufs(state: State<'_, AppState>, lufs: f32) -> CmdResult<()> {
-    state
-        .settings
-        .set_voice_target_lufs(lufs)
-        .map_err(map_err)
+    state.settings.set_voice_target_lufs(lufs).map_err(map_err)
 }
 
 #[tauri::command]
@@ -837,9 +827,7 @@ pub fn hide_mini_window(app: AppHandle) -> CmdResult<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_virtual_cable_status(
-    state: State<'_, AppState>,
-) -> CmdResult<VirtualCableStatusDto> {
+pub fn get_virtual_cable_status(state: State<'_, AppState>) -> CmdResult<VirtualCableStatusDto> {
     let settings = state.settings.load().map_err(map_err)?;
     let pending = state.settings.pending_virtual_setup().map_err(map_err)?;
     virtual_cable::build_status(
@@ -904,15 +892,11 @@ pub fn ensure_virtual_cable(
             .map_err(map_err)?
             .join("drivers")
             .join("vbcable");
-        let bundled = app
-            .path()
-            .resource_dir()
-            .ok()
-            .and_then(|dir| {
-                virtual_cable::bundled_pack_candidates(&dir)
-                    .into_iter()
-                    .find(|p| p.is_dir())
-            });
+        let bundled = app.path().resource_dir().ok().and_then(|dir| {
+            virtual_cable::bundled_pack_candidates(&dir)
+                .into_iter()
+                .find(|p| p.is_dir())
+        });
         let _reboot =
             virtual_cable::download_and_install(&work, bundled.as_deref()).map_err(map_err)?;
         state
