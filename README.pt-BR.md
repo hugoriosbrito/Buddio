@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="src/assets/brand/app-icon.png" width="112" alt="Logo do Buddio" />
+  <img src="src/assets/brand/app-icon.svg" width="112" alt="Logo do Buddio" />
 
   <h1>Buddio</h1>
   <p><em>Por Hugo Rios</em></p>
