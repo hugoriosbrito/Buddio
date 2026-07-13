@@ -59,6 +59,13 @@ pub struct AppState {
     pub folder_watch: Arc<FolderWatchManager>,
     pub audio: AudioEngineHandle,
     pub mic_meter: audio_engine::MicMeter,
+    /// Guards `ensure_virtual_cable` against concurrent invocations — it can be
+    /// triggered from three independent UI surfaces (onboarding's post-reboot
+    /// auto-resume, the "Ativar rota" button, and "repair route"), and two
+    /// overlapping elevated VB-CABLE installer runs racing on the same work
+    /// directory is exactly the kind of thing that leaves the driver half
+    /// installed instead of just slow.
+    pub virtual_cable_busy: Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -235,6 +242,7 @@ pub fn run() {
                 folder_watch: folder_watch.clone(),
                 audio,
                 mic_meter: audio_engine::MicMeter::new(),
+                virtual_cable_busy: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             };
             app.manage(state);
 

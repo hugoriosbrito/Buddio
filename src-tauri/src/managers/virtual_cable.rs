@@ -164,16 +164,18 @@ pub fn download_and_install(work_dir: &Path, bundled_pack: Option<&Path>) -> Res
     tracing::info!(setup = %setup.display(), "running elevated VB-CABLE setup (single UAC)");
     let install = run_elevated_install(&setup, &pack_dir)?;
 
-    // Give Windows a moment to register the driver endpoints.
-    for _ in 0..6 {
-        std::thread::sleep(Duration::from_secs(1));
-        if driver_service_present() || playback_present() {
-            break;
+    // Give Windows a moment to register the driver endpoints. Only
+    // `playback_present()` (the actual WASAPI endpoint) means we're done —
+    // the driver *service* registry key can appear a couple seconds before
+    // the endpoint is actually enumerable, so using it as an early-exit
+    // condition here was giving up on the retry loop before the thing we
+    // actually need existed, and reporting "reboot required" when a few
+    // more seconds would have found it.
+    for _ in 0..15 {
+        if playback_present() {
+            return Ok(false);
         }
-    }
-
-    if playback_present() {
-        return Ok(false);
+        std::thread::sleep(Duration::from_secs(1));
     }
 
     match install {

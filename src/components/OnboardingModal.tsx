@@ -389,6 +389,11 @@ export function OnboardingModal() {
         const cable = await api.getVirtualCableStatus();
         setCaptureHint(cable.captureHint);
         if (cable.pendingAfterReboot && cable.installed && !cable.configured) {
+          // Mirror applyVirtual's busy state so "Ativar rota" is disabled
+          // while this automatic post-reboot resume is in flight — otherwise
+          // a user landing on the "virtual" screen could click it and race
+          // this call into a second concurrent VB-CABLE install attempt.
+          setEnsuringVirtual(true);
           try {
             const result = await api.ensureVirtualCable();
             await hydrate();
@@ -405,6 +410,8 @@ export function OnboardingModal() {
               err instanceof Error ? err.message : String(err),
             );
             setScreen("virtual");
+          } finally {
+            setEnsuringVirtual(false);
           }
         } else if (cable.pendingAfterReboot && !cable.installed) {
           setVirtualEnsureMessage(

@@ -850,6 +850,15 @@ pub fn get_virtual_cable_status(
     .map_err(map_err)
 }
 
+/// Releases `AppState::virtual_cable_busy` on drop (including early returns via `?`).
+struct VirtualCableBusyGuard(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for VirtualCableBusyGuard {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// Detect VB-CABLE (or similar), install if missing, then set secondary output.
 #[tauri::command]
 #[specta::specta]
@@ -857,6 +866,27 @@ pub fn ensure_virtual_cable(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> CmdResult<VirtualCableEnsureResult> {
+    // Reachable from three independent UI surfaces (onboarding auto-resume
+    // after reboot, the "Ativar rota" button, "repair route") — refuse to
+    // run two elevated VB-CABLE installs concurrently instead of letting
+    // them race on the same work directory.
+    if state
+        .virtual_cable_busy
+        .compare_exchange(
+            false,
+            true,
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+        )
+        .is_err()
+    {
+        return Err(
+            "Já existe uma verificação/instalação do cabo virtual em andamento. Aguarde terminar."
+                .to_string(),
+        );
+    }
+    let _busy_guard = VirtualCableBusyGuard(state.virtual_cable_busy.clone());
+
     let settings = state.settings.load().map_err(map_err)?;
     let pending = state.settings.pending_virtual_setup().map_err(map_err)?;
 
