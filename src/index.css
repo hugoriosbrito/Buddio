@@ -1,0 +1,495 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Segoe UI", sans-serif;
+  --font-brand: "Nunito", "Inter", sans-serif;
+  --font-mono: "IBM Plex Mono", "Consolas", monospace;
+
+  --color-brand: var(--buddio-brand);
+  --color-brand-deep: var(--buddio-brand-deep);
+  --color-brand-soft: var(--buddio-brand-soft);
+  --color-brand-border: var(--buddio-brand-border);
+  --color-success: var(--buddio-success);
+  --color-warning: var(--buddio-warning);
+  --color-danger: var(--buddio-danger);
+  --color-canvas: var(--buddio-canvas);
+  --color-window: var(--buddio-window);
+  --color-sidebar: var(--buddio-sidebar);
+  --color-surface: var(--buddio-surface);
+  --color-surface-secondary: var(--buddio-surface-secondary);
+  --color-surface-selected: var(--buddio-surface-selected);
+  --color-border: var(--buddio-border);
+  --color-border-subtle: var(--buddio-border-subtle);
+  --color-text: var(--buddio-text);
+  --color-text-secondary: var(--buddio-text-secondary);
+  --color-text-muted: var(--buddio-text-muted);
+}
+
+:root,
+[data-theme="light"] {
+  --buddio-brand: #5b4dff;
+  --buddio-brand-deep: #4438d8;
+  --buddio-brand-soft: #ece8ff;
+  --buddio-brand-border: #d7d0ff;
+  --buddio-success: #35a55a;
+  --buddio-warning: #e1a63a;
+  --buddio-danger: #ff5c62;
+  --buddio-canvas: #e7e4de;
+  --buddio-window: #f7f6f2;
+  --buddio-sidebar: #eeece7;
+  --buddio-surface: #ffffff;
+  --buddio-surface-secondary: #f1efea;
+  --buddio-surface-selected: #f5f2ff;
+  --buddio-border: #ddd9d1;
+  --buddio-border-subtle: #e8e5de;
+  --buddio-text: #191820;
+  --buddio-text-secondary: #7b776f;
+  --buddio-text-muted: #a19c93;
+
+  --shadow-window: 0 24px 48px rgba(0, 0, 0, 0.16);
+  --shadow-modal: 0 16px 40px rgba(0, 0, 0, 0.18);
+  --shadow-selected: 0 8px 20px rgba(91, 77, 255, 0.12);
+  --btn-inner-shadow:
+    inset 0 -1px 3px rgba(255, 255, 255, 0.26),
+    inset 0 2px 6px rgba(46, 35, 133, 0.22);
+  --btn-secondary-inner:
+    inset 0 1px 2px rgba(255, 255, 255, 0.55),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.06);
+
+  --duration-instant: 80ms;
+  --duration-hover: 140ms;
+  --duration-default: 200ms;
+  --duration-modal: 250ms;
+  --duration-view: 280ms;
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --radius-window: 24px;
+  --radius-panel: 20px;
+  --radius-card: 18px;
+  --radius-control: 12px;
+  --radius-hotkey: 7px;
+
+  /* Densidade expandida (padrão) */
+  --space-pad: 18px;
+  --space-pad-x: 32px;
+  --space-pad-y: 28px;
+  --space-gap: 20px;
+  --space-pad-card: 18px;
+  --space-gap-card: 14px;
+  --control-h: 40px;
+  --sidebar-w: 228px;
+  --sidebar-pad: 22px;
+  --nav-h: 48px;
+  --status-h: 56px;
+  --titlebar-h: 52px;
+  --inspector-w: 320px;
+  --pad-radius: 18px;
+  --heading-size: 30px;
+  --ui-font-size: 14px;
+  --brand-mark-size: 42px;
+  --brand-word-size: 23px;
+  --buddio-accent: #5b4dff;
+}
+
+/* Densidade: fora de @layer para vencer o :root (unlayered > layered) */
+[data-density="comfortable"] {
+  --radius-card: 18px;
+  --radius-control: 12px;
+  --radius-panel: 20px;
+  --space-pad: 18px;
+  --space-pad-x: 32px;
+  --space-pad-y: 28px;
+  --space-gap: 20px;
+  --space-pad-card: 18px;
+  --space-gap-card: 14px;
+  --control-h: 40px;
+  --sidebar-w: 228px;
+  --sidebar-pad: 22px;
+  --nav-h: 48px;
+  --status-h: 56px;
+  --titlebar-h: 52px;
+  --inspector-w: 320px;
+  --pad-radius: 18px;
+  --heading-size: 30px;
+  --ui-font-size: 14px;
+  --brand-mark-size: 42px;
+  --brand-word-size: 23px;
+}
+
+[data-density="compact"] {
+  --radius-card: 10px;
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --space-pad: 8px;
+  --space-pad-x: 14px;
+  --space-pad-y: 10px;
+  --space-gap: 8px;
+  --space-pad-card: 8px;
+  --space-gap-card: 6px;
+  --control-h: 28px;
+  --sidebar-w: 176px;
+  --sidebar-pad: 10px;
+  --nav-h: 32px;
+  --status-h: 36px;
+  --titlebar-h: 40px;
+  --inspector-w: 260px;
+  --pad-radius: 10px;
+  --heading-size: 22px;
+  --ui-font-size: 12px;
+  --brand-mark-size: 32px;
+  --brand-word-size: 18px;
+}
+
+[data-theme="dark"] {
+  --buddio-brand: #5b4dff;
+  --buddio-brand-deep: #7b6fff;
+  --buddio-brand-soft: #2f2955;
+  --buddio-brand-border: #4a4190;
+  --buddio-success: #35a55a;
+  --buddio-warning: #e1a63a;
+  --buddio-danger: #ff5c62;
+  --buddio-canvas: #090a0d;
+  --buddio-window: #121319;
+  --buddio-sidebar: #0e0f14;
+  --buddio-surface: #1d1e24;
+  --buddio-surface-secondary: #25262e;
+  --buddio-surface-selected: #2f2955;
+  --buddio-border: #343641;
+  --buddio-border-subtle: #292b34;
+  --buddio-text: #f5f3ee;
+  --buddio-text-secondary: #a7a8b0;
+  --buddio-text-muted: #777983;
+
+  --shadow-window: 0 24px 48px rgba(0, 0, 0, 0.45);
+  --shadow-modal: 0 16px 40px rgba(0, 0, 0, 0.5);
+  --shadow-selected: 0 8px 20px rgba(91, 77, 255, 0.25);
+  --btn-inner-shadow:
+    inset 0 -1px 3px rgba(255, 255, 255, 0.3),
+    inset 0 2px 6px rgba(46, 35, 133, 0.35);
+  --btn-secondary-inner:
+    inset 0 1px 2px rgba(255, 255, 255, 0.08),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.25);
+
+  --buddio-accent: #5b4dff;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: var(--ui-font-size, 14px);
+    color: var(--buddio-text);
+    background: var(--buddio-canvas);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    -webkit-user-select: none;
+    overscroll-behavior: none;
+    cursor: default;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  /* Scrollbars no estilo Buddio (esconde o look Edge/Chromium padrão) */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--buddio-border) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--buddio-border) 85%, var(--buddio-text-muted));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--buddio-text-muted);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  .buddio-scroll {
+    scrollbar-gutter: stable;
+  }
+
+  img {
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+
+  input,
+  textarea,
+  [contenteditable="true"] {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  button,
+  a {
+    text-decoration: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--buddio-brand);
+    outline-offset: 2px;
+  }
+
+  /* Fade curto na troca de tema (seção 15) — classe temporária, removida após 200ms */
+  html.theme-fading,
+  html.theme-fading * {
+    transition:
+      background-color 160ms var(--ease-enter),
+      color 160ms var(--ease-enter),
+      border-color 160ms var(--ease-enter) !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  [data-reduce-motion="true"] *,
+  [data-reduce-motion="true"] *::before,
+  [data-reduce-motion="true"] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@layer utilities {
+  .font-brand {
+    font-family: var(--font-brand);
+  }
+
+  .drag-region {
+    app-region: drag;
+    -webkit-app-region: drag;
+  }
+
+  .no-drag {
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
+  }
+
+  .btn-primary-shadow {
+    box-shadow: var(--btn-inner-shadow), 0 3px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .btn-secondary-shadow {
+    box-shadow: var(--btn-secondary-inner);
+  }
+
+  .pad-press:active {
+    transform: scale(0.98);
+  }
+
+  @keyframes buddio-wave {
+    from {
+      transform: scaleY(0.85);
+    }
+    to {
+      transform: scaleY(1.08);
+    }
+  }
+
+  /* Motion system — seção 10 do design doc */
+  @keyframes buddio-overlay-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes buddio-overlay-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes buddio-modal-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes buddio-modal-out {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.985);
+    }
+  }
+
+  @keyframes buddio-toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes buddio-toast-out {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+
+  @keyframes buddio-toast-progress {
+    from {
+      transform: scaleX(1);
+    }
+    to {
+      transform: scaleX(0);
+    }
+  }
+
+  @keyframes buddio-view-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes buddio-panel-in {
+    from {
+      opacity: 0;
+      transform: translateX(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes buddio-shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    12.5%,
+    62.5% {
+      transform: translateX(-2px);
+    }
+    37.5%,
+    87.5% {
+      transform: translateX(2px);
+    }
+  }
+
+  @keyframes buddio-play-pulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(91, 77, 255, 0.35);
+    }
+    100% {
+      box-shadow: 0 0 0 8px rgba(91, 77, 255, 0);
+    }
+  }
+
+  @keyframes buddio-pop-in {
+    from {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .animate-overlay-in {
+    animation: buddio-overlay-in var(--duration-modal) var(--ease-enter) both;
+  }
+
+  .animate-overlay-out {
+    animation: buddio-overlay-out 140ms var(--ease-exit) both;
+  }
+
+  .animate-modal-in {
+    animation: buddio-modal-in 220ms var(--ease-enter) both;
+  }
+
+  .animate-modal-out {
+    animation: buddio-modal-out 140ms var(--ease-exit) both;
+  }
+
+  .animate-toast-in {
+    animation: buddio-toast-in 160ms var(--ease-enter) both;
+  }
+
+  .animate-toast-out {
+    animation: buddio-toast-out 120ms var(--ease-exit) both;
+  }
+
+  .animate-view-in {
+    animation: buddio-view-in var(--duration-view) var(--ease-enter) both;
+  }
+
+  .animate-panel-in {
+    animation: buddio-panel-in 240ms var(--ease-enter) both;
+  }
+
+  .animate-shake {
+    animation: buddio-shake 180ms ease-in-out 2;
+  }
+
+  .animate-play-pulse {
+    animation: buddio-play-pulse 220ms var(--ease-enter) 1;
+  }
+
+  .animate-pop-in {
+    animation: buddio-pop-in 140ms var(--ease-spring) both;
+  }
+}

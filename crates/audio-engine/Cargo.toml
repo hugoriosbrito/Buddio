@@ -1,0 +1,20 @@
+[package]
+name = "audio-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Buddio soundboard audio engine — hot-cache PCM playback with dual outputs"
+license = "MIT"
+
+[dependencies]
+rodio = { version = "0.20", default-features = false, features = ["symphonia-all"] }
+cpal = "0.15"
+thiserror = "2"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+tracing = "0.1"
+sha2 = "0.10"
+parking_lot = "0.12"
+crossbeam-channel = "0.5"
+
+[dev-dependencies]
+tempfile = "3"

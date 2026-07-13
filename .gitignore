@@ -1,0 +1,72 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Rust / Tauri
+/target
+src-tauri/target
+
+# App local data (if ever created in-repo)
+app-data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Local cargo overrides (absolute linker paths, etc.)
+.cargo/config.local.toml
+.cargo/config.toml
+
+# Generated icon source
+app-icon.png
+
+# E2E test artifacts / downloaded drivers
+e2e/.cache/
+e2e/artifacts/
+e2e/.db-backup/
+
+# AI tools & assistants
+.claude/
+.cursor/
+.copilot/
+.codeium/
+.gemini/
+.aider*
+.continue/
+.windsurf/
+.augment/
+.tmp-agent/
+CLAUDE.md
+.cursorrules
+.cursorignore
+
+# Build / debug output files
+cargo-out.txt
+tsc-out.txt
+
+# Temporary files
+tmp/
