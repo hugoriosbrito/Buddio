@@ -13,8 +13,8 @@ use crate::managers::virtual_cable::{
 use crate::managers::library::{self, SUPPORTED_EXTS};
 use crate::models::{
     AppSettings, ClipDto, ClipUpdate, CollectionDto, CollectionUpdate, DiagnosticsDto,
-    ImportResult, InputDeviceDto, OutputDeviceDto, OutputDevicesConfig, ProfileDto, ProfileUpdate,
-    WatchedFolderDto,
+    ImportResult, InputDeviceDto, MicRouteModeDto, OutputDeviceDto, OutputDevicesConfig,
+    ProfileDto, ProfileUpdate, WatchedFolderDto,
 };
 use crate::AppState;
 
@@ -658,6 +658,10 @@ pub fn get_diagnostics(state: State<'_, AppState>) -> CmdResult<DiagnosticsDto> 
     } else if let Some(ref name) = settings.secondary_device {
         if !devices.iter().any(|d| &d.name == name) {
             warnings.push(format!("Secondary device not found: {name}"));
+        } else if !virtual_cable::is_virtual_playback_name(name) {
+            warnings.push(format!(
+                "Secondary device '{name}' doesn't look like VB-CABLE — Discord/Zoom likely won't hear your sounds"
+            ));
         }
     }
     if settings.monitor_enabled {
@@ -671,6 +675,18 @@ pub fn get_diagnostics(state: State<'_, AppState>) -> CmdResult<DiagnosticsDto> 
     }
     if devices.is_empty() {
         warnings.push("No output devices detected".into());
+    }
+    if matches!(settings.mic_route_mode, MicRouteModeDto::Ducking) && settings.ducking_db >= 0.0 {
+        warnings.push(
+            "Ducking mode is on but ducking is 0 dB — voice won't actually be attenuated during playback"
+                .into(),
+        );
+    }
+    if !state.settings.is_voice_target_calibrated().map_err(map_err)? {
+        warnings.push(
+            "Voice loudness target was never set — clips normalize against a generic default instead of your voice"
+                .into(),
+        );
     }
 
     Ok(DiagnosticsDto {

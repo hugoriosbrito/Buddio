@@ -243,6 +243,12 @@ impl SettingsManager {
         self.set(KEY_VOICE_TARGET, &lufs.clamp(-40.0, -6.0).to_string())
     }
 
+    /// `false` until `set_voice_target_lufs` has ever been called — distinguishes
+    /// "user picked -16 LUFS" from "still on the untouched default".
+    pub fn is_voice_target_calibrated(&self) -> Result<bool> {
+        Ok(self.get(KEY_VOICE_TARGET)?.is_some())
+    }
+
     pub fn set_index_hotkeys_enabled(&self, enabled: bool) -> Result<()> {
         self.set(KEY_INDEX_HOTKEYS, if enabled { "1" } else { "0" })
     }
