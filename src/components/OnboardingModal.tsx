@@ -473,8 +473,12 @@ export function OnboardingModal() {
     try {
       await api.setOnboardingDone(true);
       await hydrate();
-    } catch {
-      /* ignore */
+    } catch (err) {
+      pushToast({
+        kind: "warning",
+        message: `Não foi possível salvar a conclusão do onboarding: ${String(err)}. Ele pode reaparecer na próxima abertura.`,
+        sticky: true,
+      });
     }
     setOpen(false);
     setScreen("welcome");

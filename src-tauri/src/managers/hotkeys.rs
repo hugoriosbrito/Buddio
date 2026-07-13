@@ -626,7 +626,29 @@ impl HotkeyManager {
 
 /// Run a fired [`HotkeyAction`] — shared by the keyboard (`global-hotkey`) event
 /// handler and the [`HotkeyManager::init_mouse_listener`] rdev callback.
+///
+/// Both callers invoke this from an OS-driven callback (a `WM_HOTKEY`-pumping
+/// event loop for keyboard, a raw input hook thread for mouse) rather than
+/// plain application code, so a panic here must not unwind into that caller —
+/// on Windows, unwinding across an OS/FFI callback boundary is undefined
+/// behavior and can abort the whole process instead of just this one hotkey
+/// press. Catch it, log it, and keep the listener alive for the next press.
 fn dispatch_action(app: &AppHandle, action: &HotkeyAction, index_clip_ids: &Arc<Mutex<Vec<String>>>) {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        dispatch_action_inner(app, action, index_clip_ids);
+    }));
+    if let Err(payload) = result {
+        let message = payload
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "non-string panic payload".to_string());
+        eprintln!("[buddio] PANIC in hotkey dispatch (contained): {message}");
+        warn!(panic = %message, "hotkey dispatch panicked — action was not completed");
+    }
+}
+
+fn dispatch_action_inner(app: &AppHandle, action: &HotkeyAction, index_clip_ids: &Arc<Mutex<Vec<String>>>) {
     match action {
         HotkeyAction::PlayClip(clip_id) => {
             eprintln!("[buddio] HOTKEY FIRED clip={clip_id}");

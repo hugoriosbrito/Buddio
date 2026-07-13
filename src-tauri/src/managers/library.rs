@@ -378,10 +378,12 @@ impl LibraryManager {
             )?;
         }
         if let Some(emoji) = &update.emoji {
-            let value = if emoji.trim().is_empty() {
+            let trimmed = emoji.trim();
+            let value = if trimmed.is_empty() {
                 None
             } else {
-                Some(emoji.as_str())
+                validate_emoji(trimmed)?;
+                Some(trimmed)
             };
             conn.execute(
                 "UPDATE clips SET emoji = ?1 WHERE id = ?2",
@@ -536,6 +538,33 @@ fn probe_duration_and_peaks(path: &Path) -> (i32, Option<String>) {
     }
 }
 
+/// The frontend only ever renders `clip.emoji` as an `<img>` when it looks like
+/// an http(s) URL or a `data:image/` URI (see `isIconUrl` in ClipIcon.tsx);
+/// anything else is shown as plain text. Mirror that server-side so a direct
+/// command call or future client can't stash an oversized blob in the column.
+const MAX_EMOJI_URL_LEN: usize = 200_000;
+const MAX_EMOJI_TEXT_LEN: usize = 32;
+
+fn validate_emoji(value: &str) -> Result<()> {
+    let is_url_like = value.starts_with("http://")
+        || value.starts_with("https://")
+        || value.starts_with("data:image/");
+    if is_url_like {
+        if value.len() > MAX_EMOJI_URL_LEN {
+            bail!(
+                "emoji/icon URL too long ({} bytes, max {MAX_EMOJI_URL_LEN})",
+                value.len()
+            );
+        }
+    } else if value.len() > MAX_EMOJI_TEXT_LEN {
+        bail!(
+            "emoji must be a short glyph or an http(s)/data:image URL ({} bytes, max {MAX_EMOJI_TEXT_LEN} for plain text)",
+            value.len()
+        );
+    }
+    Ok(())
+}
+
 fn analyze_loudness(path: &Path, target_lufs: f32) -> (Option<f32>, f32) {
     match audio_engine::decode_file(path) {
         Ok(clip) => {
@@ -657,5 +686,28 @@ mod tests {
         let b = hash_file(&path).unwrap();
         assert_eq!(a, b);
         assert_eq!(a.len(), 64);
+    }
+
+    #[test]
+    fn validate_emoji_accepts_short_text_and_valid_urls() {
+        assert!(validate_emoji("🔥").is_ok());
+        assert!(validate_emoji("https://example.com/icon.png").is_ok());
+        assert!(validate_emoji("data:image/png;base64,AAAA").is_ok());
+    }
+
+    #[test]
+    fn validate_emoji_rejects_oversized_values() {
+        let long_text = "x".repeat(MAX_EMOJI_TEXT_LEN + 1);
+        assert!(validate_emoji(&long_text).is_err());
+
+        let long_data_uri = format!("data:image/png;base64,{}", "A".repeat(MAX_EMOJI_URL_LEN));
+        assert!(validate_emoji(&long_data_uri).is_err());
+    }
+
+    #[test]
+    fn validate_emoji_rejects_unrecognized_long_scheme() {
+        // Not http(s)/data:image and too long to be a plain glyph.
+        let bogus = format!("javascript:{}", "a".repeat(40));
+        assert!(validate_emoji(&bogus).is_err());
     }
 }

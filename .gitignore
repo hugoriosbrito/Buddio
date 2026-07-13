@@ -53,6 +53,15 @@ e2e/.db-backup/
 src-tauri/resources/vbcable/pack/
 src-tauri/resources/vbcable/*.zip
 
+# Code signing material (Authenticode .pfx, updater/other private keys) —
+# never commit these, see docs/release.md for the CI secrets flow instead.
+*.pfx
+*.p12
+*.key
+*.pem
+.env
+.env.*
+
 # AI tools & assistants
 .claude/
 .cursor/
