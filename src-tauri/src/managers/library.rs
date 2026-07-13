@@ -14,12 +14,43 @@ use tracing::{debug, info};
 
 use crate::models::{ClipDto, ClipUpdate, ImportResult};
 
-const SUPPORTED_EXTS: &[&str] = &["wav", "mp3", "flac", "ogg", "m4a", "aac", "opus"];
+pub const SUPPORTED_EXTS: &[&str] = &["wav", "mp3", "flac", "ogg", "m4a", "aac", "opus"];
 const PEAK_BUCKETS: usize = 64;
+
+/// True when `path` has a supported audio extension (case-insensitive).
+pub fn is_supported_audio(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| {
+            let ext = e.to_ascii_lowercase();
+            SUPPORTED_EXTS.contains(&ext.as_str())
+        })
+        .unwrap_or(false)
+}
+
+/// Recursively collect supported audio files under `dir`.
+pub fn collect_audio_files(dir: &Path) -> Result<Vec<PathBuf>> {
+    if !dir.is_dir() {
+        bail!("not a directory: {}", dir.display());
+    }
+    let mut paths = Vec::new();
+    for entry in walkdir::WalkDir::new(dir).follow_links(false) {
+        let entry = entry.with_context(|| format!("walk {}", dir.display()))?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let path = entry.into_path();
+        if is_supported_audio(&path) {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+    Ok(paths)
+}
 
 const CLIP_SELECT: &str = "SELECT id, name, file_hash, ext, duration_ms, volume, loop_enabled,
     hotkey, created_at, position, peaks, trim_start_ms, trim_end_ms, fade_in_ms, fade_out_ms,
-    gain_db, restart_on_press, stop_others, emoji, pinned
+    gain_db, restart_on_press, stop_others, emoji, pinned, integrated_lufs, norm_gain_db
     FROM clips";
 
 pub struct LibraryManager {
@@ -150,6 +181,7 @@ impl LibraryManager {
         }
 
         let (duration_ms, peaks_json) = probe_duration_and_peaks(&dest);
+        let (integrated_lufs, norm_gain_db) = analyze_loudness(&dest, -16.0);
         let name = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -169,9 +201,20 @@ impl LibraryManager {
 
             conn.execute(
                 "INSERT INTO clips (
-                    id, name, file_hash, ext, duration_ms, volume, loop_enabled, hotkey, position, peaks
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, 1.0, 0, NULL, ?6, ?7)",
-                params![id, name, hash, ext, duration_ms, next, peaks_json],
+                    id, name, file_hash, ext, duration_ms, volume, loop_enabled, hotkey, position, peaks,
+                    integrated_lufs, norm_gain_db
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, 1.0, 0, NULL, ?6, ?7, ?8, ?9)",
+                params![
+                    id,
+                    name,
+                    hash,
+                    ext,
+                    duration_ms,
+                    next,
+                    peaks_json,
+                    integrated_lufs,
+                    norm_gain_db
+                ],
             )?;
             next
         };
@@ -366,6 +409,8 @@ fn map_clip_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ClipDto> {
         emoji: row.get(18)?,
         pinned: pinned_int != 0,
         collection_ids: Vec::new(),
+        integrated_lufs: row.get(20)?,
+        norm_gain_db: row.get::<_, Option<f32>>(21)?.unwrap_or(0.0),
     })
 }
 
@@ -421,9 +466,26 @@ fn probe_duration_and_peaks(path: &Path) -> (i32, Option<String>) {
     }
 }
 
+fn analyze_loudness(path: &Path, target_lufs: f32) -> (Option<f32>, f32) {
+    match audio_engine::decode_file(path) {
+        Ok(clip) => {
+            let (lufs, gain) = audio_engine::analyze_clip(&clip, target_lufs);
+            (Some(lufs), gain)
+        }
+        Err(_) => (None, 0.0),
+    }
+}
+
 /// Build an [`audio_engine::AudioCommand::Play`] from clip editor metadata.
 pub fn play_command_for_clip(clip: &ClipDto) -> audio_engine::AudioCommand {
-    let gain_linear = audio_engine::db_to_linear(clip.gain_db);
+    play_command_for_clip_with_vad(clip, true)
+}
+
+pub fn play_command_for_clip_with_vad(
+    clip: &ClipDto,
+    play_vad_preamble: bool,
+) -> audio_engine::AudioCommand {
+    let gain_linear = audio_engine::combined_gain_linear(clip.norm_gain_db, clip.gain_db);
     audio_engine::AudioCommand::Play {
         clip_id: clip.id.clone(),
         volume: clip.volume,
@@ -433,6 +495,7 @@ pub fn play_command_for_clip(clip: &ClipDto) -> audio_engine::AudioCommand {
         fade_in_secs: Some(clip.fade_in_ms as f32 / 1000.0),
         fade_out_secs: Some(clip.fade_out_ms as f32 / 1000.0),
         gain_linear: Some(gain_linear),
+        play_vad_preamble,
     }
 }
 

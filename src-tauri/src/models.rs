@@ -27,6 +27,45 @@ pub struct ClipDto {
     pub emoji: Option<String>,
     pub pinned: bool,
     pub collection_ids: Vec<String>,
+    /// Integrated loudness estimate (LUFS-ish); None until analyzed.
+    pub integrated_lufs: Option<f32>,
+    /// Auto normalization gain toward voice target (dB).
+    pub norm_gain_db: f32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum MicRouteModeDto {
+    #[default]
+    Mix,
+    Ducking,
+    SoundOnly,
+}
+
+impl MicRouteModeDto {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Mix => "mix",
+            Self::Ducking => "ducking",
+            Self::SoundOnly => "sound_only",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "ducking" | "duck" => Self::Ducking,
+            "sound_only" | "sound-only" | "block" | "block_voice" => Self::SoundOnly,
+            _ => Self::Mix,
+        }
+    }
+
+    pub fn to_engine(self) -> audio_engine::MicRouteMode {
+        match self {
+            Self::Mix => audio_engine::MicRouteMode::Mix,
+            Self::Ducking => audio_engine::MicRouteMode::Ducking,
+            Self::SoundOnly => audio_engine::MicRouteMode::SoundOnly,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -76,6 +115,8 @@ pub struct ProfileDto {
     pub master_volume: f32,
     pub collection_id: Option<String>,
     pub is_default: bool,
+    pub mic_route_mode: MicRouteModeDto,
+    pub ducking_db: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -88,6 +129,8 @@ pub struct ProfileUpdate {
     pub master_volume: Option<f32>,
     pub collection_id: Option<String>,
     pub is_default: Option<bool>,
+    pub mic_route_mode: Option<MicRouteModeDto>,
+    pub ducking_db: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -123,7 +166,15 @@ pub struct AppSettings {
     pub theme: String,
     pub active_profile_id: Option<String>,
     pub onboarding_done: bool,
+    /// Legacy mirror: true when mic_route_mode is Mix or Ducking (voice present when idle).
     pub mic_mix_enabled: bool,
+    pub mic_route_mode: MicRouteModeDto,
+    pub ducking_db: f32,
+    pub vad_sound_enabled: bool,
+    pub voice_target_lufs: f32,
+    pub index_hotkeys_enabled: bool,
+    /// Physical microphone used for mic→CABLE mix (never CABLE Output).
+    pub mic_device: Option<String>,
     pub pinned_clip_ids: Vec<String>,
 }
 
@@ -138,10 +189,25 @@ impl Default for AppSettings {
             theme: "dark".into(),
             active_profile_id: None,
             onboarding_done: false,
-            mic_mix_enabled: false,
+            mic_mix_enabled: true,
+            mic_route_mode: MicRouteModeDto::Mix,
+            ducking_db: -8.0,
+            vad_sound_enabled: false,
+            voice_target_lufs: -16.0,
+            index_hotkeys_enabled: false,
+            mic_device: None,
             pinned_clip_ids: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct WatchedFolderDto {
+    pub id: String,
+    pub path: String,
+    pub collection_id: Option<String>,
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]

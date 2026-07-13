@@ -23,13 +23,11 @@ export function RoutingView() {
   const settings = useSettingsStore((s) => s.settings);
   const devices = useSettingsStore((s) => s.devices);
   const setOutputs = useSettingsStore((s) => s.setOutputs);
+  const setMicRoute = useSettingsStore((s) => s.setMicRoute);
   const hydrate = useSettingsStore((s) => s.hydrate);
   const setDiagnosticsOpen = useUiStore((s) => s.setDiagnosticsOpen);
   const push = useToastStore((s) => s.push);
   const [query, setQuery] = useState("");
-  const [gain, setGain] = useState("82");
-  const [noiseGate, setNoiseGate] = useState("on");
-  const [ducking, setDucking] = useState("-8");
 
 
   const hasSecondary = Boolean(settings.secondaryDevice);
@@ -137,7 +135,13 @@ export function RoutingView() {
           <Arrow />
           <RouteCard
             title="Mixer Buddio"
-            subtitle="Voz + soundboard"
+            subtitle={
+              settings.micRouteMode === "soundOnly"
+                ? "Só som (block voice)"
+                : settings.micRouteMode === "ducking"
+                  ? "Ducking ativo"
+                  : "Voz + soundboard"
+            }
             icon={<WaveIcon size={18} weight="duotone" />}
             highlight
             ok
@@ -173,39 +177,45 @@ export function RoutingView() {
                 onChange={() => undefined}
               />
             </Field>
-            <Field label="Ganho">
+            <Field label="Modo do microfone" className="sm:col-span-2">
               <Select
-                aria-label="Ganho"
-                value={gain}
+                aria-label="Modo do microfone"
+                value={settings.micRouteMode}
                 options={[
-                  { value: "60", label: "60%" },
-                  { value: "82", label: "82%" },
-                  { value: "100", label: "100%" },
+                  { value: "mix", label: "Misturar voz + sons" },
+                  { value: "ducking", label: "Ducking (abaixa a voz)" },
+                  { value: "soundOnly", label: "Só som (block voice)" },
                 ]}
-                onChange={setGain}
-              />
-            </Field>
-            <Field label="Noise gate">
-              <Select
-                aria-label="Noise gate"
-                value={noiseGate}
-                options={[
-                  { value: "on", label: "Ligado" },
-                  { value: "off", label: "Desligado" },
-                ]}
-                onChange={setNoiseGate}
+                onChange={(next) => {
+                  void setMicRoute(
+                    next as "mix" | "ducking" | "soundOnly",
+                    settings.duckingDb,
+                  ).then(() =>
+                    push({
+                      kind: "info",
+                      message:
+                        next === "soundOnly"
+                          ? "Mic mudo enquanto um som toca"
+                          : next === "ducking"
+                            ? "Voz abaixa durante o playback"
+                            : "Voz e sons juntos no CABLE",
+                    }),
+                  );
+                }}
               />
             </Field>
             <Field label="Ducking">
               <Select
                 aria-label="Ducking"
-                value={ducking}
+                value={String(settings.duckingDb)}
                 options={[
                   { value: "0", label: "0 dB" },
                   { value: "-8", label: "-8 dB" },
                   { value: "-12", label: "-12 dB" },
                 ]}
-                onChange={setDucking}
+                onChange={(next) => {
+                  void setMicRoute(settings.micRouteMode, Number(next));
+                }}
               />
             </Field>
             <Field label="Microfone virtual">
@@ -245,12 +255,18 @@ export function RoutingView() {
                 }
               />
               <Toggle
-                label="Misturar microfone"
-                checked={settings.micMixEnabled}
+                label="Som de ativação de voz (VAD)"
+                checked={settings.vadSoundEnabled}
                 onChange={async (enabled) => {
                   try {
-                    await api.setMicMix(enabled);
+                    await api.setVadSound(enabled);
                     await hydrate();
+                    push({
+                      kind: "info",
+                      message: enabled
+                        ? "Beep curto antes de cada som (Discord VAD)"
+                        : "VAD sound desligado",
+                    });
                   } catch (err) {
                     push({ kind: "error", message: String(err) });
                   }

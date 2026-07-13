@@ -10,9 +10,11 @@ use crate::managers::library::play_command_for_clip;
 use crate::managers::virtual_cable::{
     self, VirtualCableEnsureResult, VirtualCableStatusDto,
 };
+use crate::managers::library::{self, SUPPORTED_EXTS};
 use crate::models::{
     AppSettings, ClipDto, ClipUpdate, CollectionDto, CollectionUpdate, DiagnosticsDto,
     ImportResult, InputDeviceDto, OutputDeviceDto, OutputDevicesConfig, ProfileDto, ProfileUpdate,
+    WatchedFolderDto,
 };
 use crate::AppState;
 
@@ -35,10 +37,7 @@ pub async fn import_clips(app: AppHandle, paths: Option<Vec<String>>) -> CmdResu
             dialog_app
                 .dialog()
                 .file()
-                .add_filter(
-                    "Audio",
-                    &["wav", "mp3", "flac", "ogg", "m4a", "aac", "opus"],
-                )
+                .add_filter("Audio", SUPPORTED_EXTS)
                 .blocking_pick_files()
                 .unwrap_or_default()
                 .into_iter()
@@ -74,6 +73,129 @@ pub async fn import_clips(app: AppHandle, paths: Option<Vec<String>>) -> CmdResu
     }
 
     Ok(result)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn import_folder(app: AppHandle, path: Option<String>) -> CmdResult<ImportResult> {
+    let state = app.state::<AppState>();
+
+    let folder: Option<PathBuf> = if let Some(path) = path {
+        Some(PathBuf::from(path))
+    } else {
+        let dialog_app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            dialog_app
+                .dialog()
+                .file()
+                .blocking_pick_folder()
+                .and_then(|f| f.into_path().ok())
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    };
+
+    let Some(folder) = folder else {
+        return Ok(ImportResult {
+            imported: vec![],
+            duplicates: vec![],
+            errors: vec![],
+        });
+    };
+
+    let library = state.library.clone();
+    let audio = state.audio.clone();
+    let folder_for_scan = folder.clone();
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let paths = library::collect_audio_files(&folder_for_scan)?;
+        library.import_paths(&paths)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(map_err)?;
+
+    for clip in &result.imported {
+        let path = state.library.asset_path(&clip.file_hash, &clip.ext);
+        let _ = audio.send(audio_engine::AudioCommand::LoadClip {
+            clip_id: clip.id.clone(),
+            path,
+        });
+    }
+
+    Ok(result)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_watched_folders(state: State<'_, AppState>) -> CmdResult<Vec<WatchedFolderDto>> {
+    state.folder_watch.list().map_err(map_err)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn add_watched_folder(
+    app: AppHandle,
+    path: Option<String>,
+    collection_id: Option<String>,
+) -> CmdResult<WatchedFolderDto> {
+    let state = app.state::<AppState>();
+
+    let folder: PathBuf = if let Some(path) = path {
+        PathBuf::from(path)
+    } else {
+        let dialog_app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            dialog_app
+                .dialog()
+                .file()
+                .blocking_pick_folder()
+                .and_then(|f| f.into_path().ok())
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "nenhuma pasta selecionada".to_string())?
+    };
+
+    let folder_watch = state.folder_watch.clone();
+    let folder_clone = folder.clone();
+    let collection_id_clone = collection_id.clone();
+
+    let (folder_dto, import) = tauri::async_runtime::spawn_blocking(move || {
+        folder_watch.add(&folder_clone, collection_id_clone)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(map_err)?;
+
+    for clip in &import.imported {
+        let path = state.library.asset_path(&clip.file_hash, &clip.ext);
+        let _ = state.audio.send(audio_engine::AudioCommand::LoadClip {
+            clip_id: clip.id.clone(),
+            path,
+        });
+    }
+
+    Ok(folder_dto)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn remove_watched_folder(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    state.folder_watch.remove(&id).map_err(map_err)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_watched_folder_enabled(
+    state: State<'_, AppState>,
+    id: String,
+    enabled: bool,
+) -> CmdResult<WatchedFolderDto> {
+    state
+        .folder_watch
+        .set_enabled(&id, enabled)
+        .map_err(map_err)
 }
 
 #[tauri::command]
@@ -179,6 +301,7 @@ pub fn play_test_sample(app: AppHandle) -> CmdResult<()> {
             fade_in_secs: None,
             fade_out_secs: None,
             gain_linear: None,
+            play_vad_preamble: false,
         })
         .map_err(map_err)?;
     Ok(())
@@ -349,6 +472,39 @@ pub fn resume_hotkeys(app: AppHandle) -> CmdResult<()> {
         .map_err(map_err)
 }
 
+#[tauri::command]
+#[specta::specta]
+pub fn suggest_auto_hotkeys(app: AppHandle, count: u32) -> CmdResult<Vec<String>> {
+    let state = app.state::<AppState>();
+    let mut used = state.hotkeys.used_accelerators();
+    if let Ok(clips) = state.library.list_clips() {
+        for clip in clips {
+            if let Some(hk) = clip.hotkey.filter(|s| !s.is_empty()) {
+                used.push(hk);
+            }
+        }
+    }
+    let settings = state.settings.load().map_err(map_err)?;
+    if settings.index_hotkeys_enabled {
+        used.extend(crate::managers::hotkey_allocator::index_reserved_hotkeys());
+    }
+    Ok(crate::managers::hotkey_allocator::suggest_auto_hotkeys(
+        used, count,
+    ))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn sync_index_hotkeys(
+    app: AppHandle,
+    collection_id: Option<String>,
+) -> CmdResult<()> {
+    app.state::<AppState>()
+        .hotkeys
+        .sync_index_hotkeys(&app, collection_id)
+        .map_err(map_err)
+}
+
 // --- Collections ---
 
 #[tauri::command]
@@ -457,12 +613,24 @@ pub fn apply_profile(state: State<'_, AppState>, id: String) -> CmdResult<Profil
             secondary: profile.secondary_device.clone(),
         })
         .map_err(map_err)?;
+    state
+        .audio
+        .send(audio_engine::AudioCommand::SetMicRoute {
+            mode: profile.mic_route_mode.to_engine(),
+            ducking_db: profile.ducking_db,
+            input_device: state.settings.load().map_err(map_err)?.mic_device,
+        })
+        .map_err(map_err)?;
 
     let mut settings = state.settings.load().map_err(map_err)?;
     settings.master_volume = profile.master_volume;
     settings.monitor_enabled = profile.monitor_enabled;
     settings.monitor_device = profile.monitor_device.clone();
     settings.secondary_device = profile.secondary_device.clone();
+    settings.mic_route_mode = profile.mic_route_mode;
+    settings.ducking_db = profile.ducking_db;
+    settings.mic_mix_enabled =
+        !matches!(profile.mic_route_mode, crate::models::MicRouteModeDto::SoundOnly);
     settings.active_profile_id = Some(profile.id.clone());
     state.settings.save(&settings).map_err(map_err)?;
 
@@ -530,9 +698,92 @@ pub fn set_onboarding_done(state: State<'_, AppState>, done: bool) -> CmdResult<
 #[tauri::command]
 #[specta::specta]
 pub fn set_mic_mix(state: State<'_, AppState>, enabled: bool) -> CmdResult<()> {
+    let mode = if enabled {
+        crate::models::MicRouteModeDto::Mix
+    } else {
+        crate::models::MicRouteModeDto::SoundOnly
+    };
+    set_mic_route(state, mode, None)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_mic_route(
+    state: State<'_, AppState>,
+    mode: crate::models::MicRouteModeDto,
+    ducking_db: Option<f32>,
+) -> CmdResult<()> {
     state
         .settings
-        .set_mic_mix_enabled(enabled)
+        .set_mic_route_mode(mode)
+        .map_err(map_err)?;
+    if let Some(db) = ducking_db {
+        state.settings.set_ducking_db(db).map_err(map_err)?;
+    }
+    let settings = state.settings.load().map_err(map_err)?;
+    state
+        .audio
+        .send(audio_engine::AudioCommand::SetMicRoute {
+            mode: mode.to_engine(),
+            ducking_db: settings.ducking_db,
+            input_device: settings.mic_device,
+        })
+        .map_err(map_err)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_vad_sound(state: State<'_, AppState>, enabled: bool) -> CmdResult<()> {
+    state
+        .settings
+        .set_vad_sound_enabled(enabled)
+        .map_err(map_err)?;
+    state
+        .audio
+        .send(audio_engine::AudioCommand::SetVadSound { enabled })
+        .map_err(map_err)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_voice_target_lufs(state: State<'_, AppState>, lufs: f32) -> CmdResult<()> {
+    state
+        .settings
+        .set_voice_target_lufs(lufs)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_index_hotkeys_enabled(app: AppHandle, enabled: bool) -> CmdResult<()> {
+    let state = app.state::<AppState>();
+    state
+        .settings
+        .set_index_hotkeys_enabled(enabled)
+        .map_err(map_err)?;
+    // Rebind Ctrl+Alt+N / Alt+NumpadN (or clear when disabled), keep last collection filter.
+    let collection_id = state.hotkeys.index_collection_filter();
+    state
+        .hotkeys
+        .sync_index_hotkeys(&app, collection_id)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_mic_device(state: State<'_, AppState>, device: Option<String>) -> CmdResult<()> {
+    state
+        .settings
+        .set_mic_device(device.as_deref())
+        .map_err(map_err)?;
+    let settings = state.settings.load().map_err(map_err)?;
+    state
+        .audio
+        .send(audio_engine::AudioCommand::SetMicRoute {
+            mode: settings.mic_route_mode.to_engine(),
+            ducking_db: settings.ducking_db,
+            input_device: settings.mic_device,
+        })
         .map_err(map_err)
 }
 
@@ -607,7 +858,17 @@ pub fn ensure_virtual_cable(
             .map_err(map_err)?
             .join("drivers")
             .join("vbcable");
-        let _reboot = virtual_cable::download_and_install(&work).map_err(map_err)?;
+        let bundled = app
+            .path()
+            .resource_dir()
+            .ok()
+            .and_then(|dir| {
+                virtual_cable::bundled_pack_candidates(&dir)
+                    .into_iter()
+                    .find(|p| p.is_dir())
+            });
+        let _reboot =
+            virtual_cable::download_and_install(&work, bundled.as_deref()).map_err(map_err)?;
         state
             .settings
             .set_pending_virtual_setup(true)
@@ -664,9 +925,20 @@ pub fn ensure_virtual_cable(
     )
     .map_err(map_err)?;
 
+    // Voice + soundboard share CABLE Output in Discord when mic mix is on.
+    let _ = state
+        .settings
+        .set_mic_route_mode(crate::models::MicRouteModeDto::Mix);
+    let settings = state.settings.load().map_err(map_err)?;
+    let _ = state.audio.send(audio_engine::AudioCommand::SetMicRoute {
+        mode: audio_engine::MicRouteMode::Mix,
+        ducking_db: settings.ducking_db,
+        input_device: settings.mic_device,
+    });
+
     Ok(VirtualCableEnsureResult {
         message: format!(
-            "Rota pronta: sons vão para {playback}. No Discord/Zoom, escolha {} como microfone.",
+            "Rota pronta: voz + sons vão para {playback}. No Discord/Zoom, escolha {} como microfone.",
             status.capture_hint
         ),
         reboot_required: false,

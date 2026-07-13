@@ -117,82 +117,163 @@ pub fn build_status(
 }
 
 /// Download VB-CABLE pack into `work_dir` and run elevated silent installer.
+/// When `bundled_pack` already contains `VBCABLE_Setup_x64.exe`, copies it into
+/// `work_dir` first (normal path — avoids `\\?\` resource paths that break setup).
 /// Returns whether a reboot is likely required.
 #[cfg(windows)]
-pub fn download_and_install(work_dir: &Path) -> Result<bool> {
+pub fn download_and_install(work_dir: &Path, bundled_pack: Option<&Path>) -> Result<bool> {
     fs::create_dir_all(work_dir).context("create virtual cable work dir")?;
-    let zip_path = work_dir.join("VBCABLE_Driver_Pack.zip");
-    let extract_dir = work_dir.join("pack");
+    let pack_dir = work_dir.join("pack");
 
-    if extract_dir.exists() {
-        let _ = fs::remove_dir_all(&extract_dir);
+    if let Some(bundled) = bundled_pack.filter(|p| p.is_dir()) {
+        tracing::info!(from = %bundled.display(), to = %pack_dir.display(), "copying bundled VB-CABLE pack");
+        copy_dir_recursive(bundled, &pack_dir)?;
+    } else if find_setup_exe(&pack_dir)?.is_none() {
+        let zip_path = work_dir.join("VBCABLE_Driver_Pack.zip");
+        if pack_dir.exists() {
+            let _ = fs::remove_dir_all(&pack_dir);
+        }
+        fs::create_dir_all(&pack_dir)?;
+
+        tracing::info!(url = VB_CABLE_ZIP_URL, "downloading VB-CABLE pack");
+        download_file(VB_CABLE_ZIP_URL, &zip_path)?;
+
+        let expand = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                &format!(
+                    "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
+                    ps_escape(&zip_path),
+                    ps_escape(&pack_dir)
+                ),
+            ])
+            .status()
+            .context("expand VB-CABLE zip")?;
+        if !expand.success() {
+            bail!("falha ao extrair o pacote VB-CABLE");
+        }
+        flatten_single_nested_dir(&pack_dir)?;
     }
-    fs::create_dir_all(&extract_dir)?;
 
-    tracing::info!(url = VB_CABLE_ZIP_URL, "downloading VB-CABLE pack");
-    download_file(VB_CABLE_ZIP_URL, &zip_path)?;
-
-    let expand = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            &format!(
-                "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
-                ps_escape(&zip_path),
-                ps_escape(&extract_dir)
-            ),
-        ])
-        .status()
-        .context("expand VB-CABLE zip")?;
-    if !expand.success() {
-        bail!("falha ao extrair o pacote VB-CABLE");
-    }
-
-    let setup = find_setup_exe(&extract_dir)?
+    let setup = find_setup_exe(&pack_dir)?
         .ok_or_else(|| anyhow::anyhow!("VBCABLE_Setup_x64.exe não encontrado no pacote"))?;
 
-    // Pre-trust publisher cert when possible (reduces Windows Security prompt).
-    let _ = trust_publisher_cert(&extract_dir);
+    tracing::info!(setup = %setup.display(), "running elevated VB-CABLE setup (single UAC)");
+    let install = run_elevated_install(&setup, &pack_dir)?;
 
-    tracing::info!(setup = %setup.display(), "running elevated VB-CABLE setup");
-    let install = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            &format!(
-                "Start-Process -FilePath '{}' -ArgumentList '-h','-i','-H','-n' -Verb RunAs -Wait",
-                ps_escape(&setup)
-            ),
-        ])
-        .status()
-        .context("elevated VB-CABLE install")?;
+    // Give Windows a moment to register the driver endpoints.
+    for _ in 0..6 {
+        std::thread::sleep(Duration::from_secs(1));
+        if driver_service_present() || playback_present() {
+            break;
+        }
+    }
 
-    // User may cancel UAC — treat non-success as failure unless devices appear.
-    std::thread::sleep(Duration::from_secs(2));
-    let devices = list_output_names().unwrap_or_default();
-    let appeared = pick_virtual_playback(&devices, None).is_some();
-    if appeared {
+    if playback_present() {
         return Ok(false);
     }
 
-    if !install.success() {
-        bail!(
-            "instalação do VB-CABLE cancelada ou falhou (código {:?}). Aceite o UAC e tente de novo.",
-            install.code()
-        );
+    match install {
+        ElevatedOutcome::Cancelled => {
+            bail!(
+                "instalação do VB-CABLE cancelada no UAC. Aceite a permissão de administrador e tente de novo."
+            );
+        }
+        // VB-CABLE often returns odd exit codes and needs a reboot before
+        // CABLE Input appears — don't treat that as a hard failure.
+        ElevatedOutcome::Ok | ElevatedOutcome::Failed(_) => {
+            tracing::info!(
+                ?install,
+                service = driver_service_present(),
+                "VB-CABLE setup finished; reboot likely required before devices appear"
+            );
+            Ok(true)
+        }
     }
-
-    // Installer often requires reboot before endpoints show up.
-    Ok(true)
 }
 
 #[cfg(not(windows))]
-pub fn download_and_install(_work_dir: &Path) -> Result<bool> {
+pub fn download_and_install(_work_dir: &Path, _bundled_pack: Option<&Path>) -> Result<bool> {
     bail!("instalação automática de cabo virtual só está disponível no Windows");
+}
+
+/// Candidate folders for a VB-CABLE pack shipped inside the app resources.
+pub fn bundled_pack_candidates(resource_dir: &Path) -> Vec<PathBuf> {
+    vec![
+        resource_dir.join("resources").join("vbcable").join("pack"),
+        resource_dir.join("vbcable").join("pack"),
+        resource_dir.join("resources/vbcable/pack"),
+    ]
+}
+
+fn playback_present() -> bool {
+    let devices = list_output_names().unwrap_or_default();
+    pick_virtual_playback(&devices, None).is_some()
+}
+
+#[cfg(windows)]
+fn driver_service_present() -> bool {
+    Command::new("reg")
+        .args([
+            "query",
+            r"HKLM\SYSTEM\CurrentControlSet\Services\VBAudioVACWDM",
+            "/ve",
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+#[cfg(windows)]
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    if dst.exists() {
+        let _ = fs::remove_dir_all(dst);
+    }
+    fs::create_dir_all(dst)?;
+    for entry in walkdir(src)? {
+        let rel = entry.strip_prefix(src).unwrap_or(&entry);
+        let target = dst.join(rel);
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(&entry, &target)
+            .with_context(|| format!("copy {} → {}", entry.display(), target.display()))?;
+    }
+    Ok(())
+}
+
+fn flatten_single_nested_dir(pack_dir: &Path) -> Result<()> {
+    let mut dirs = Vec::new();
+    let mut files = 0usize;
+    for entry in fs::read_dir(pack_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            dirs.push(path);
+        } else {
+            files += 1;
+        }
+    }
+    if files == 0 && dirs.len() == 1 {
+        let nested = &dirs[0];
+        for entry in walkdir(nested)? {
+            let rel = entry.strip_prefix(nested).unwrap_or(&entry);
+            let target = pack_dir.join(rel);
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::rename(&entry, &target).or_else(|_| {
+                fs::copy(&entry, &target).map(|_| ()).and_then(|_| fs::remove_file(&entry))
+            })?;
+        }
+        let _ = fs::remove_dir_all(nested);
+    }
+    Ok(())
 }
 
 fn download_file(url: &str, dest: &Path) -> Result<()> {
@@ -253,8 +334,20 @@ fn walkdir(root: &Path) -> Result<Vec<PathBuf>> {
     Ok(out)
 }
 
-fn trust_publisher_cert(extract_dir: &Path) -> Result<()> {
-    let cat = walkdir(extract_dir)?
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ElevatedOutcome {
+    Ok,
+    Cancelled,
+    Failed(i32),
+}
+
+/// One UAC prompt: elevated PowerShell runs certutil (optional) then VB-CABLE setup.
+#[cfg(windows)]
+fn run_elevated_install(setup: &Path, pack_dir: &Path) -> Result<ElevatedOutcome> {
+    let setup_s = native_path(setup);
+    let pack_s = native_path(pack_dir);
+    let cer = pack_dir.join("vbcable-publisher.cer");
+    let cat = walkdir(pack_dir)?
         .into_iter()
         .find(|p| {
             p.extension()
@@ -262,43 +355,92 @@ fn trust_publisher_cert(extract_dir: &Path) -> Result<()> {
                 .map(|e| e.eq_ignore_ascii_case("cat"))
                 .unwrap_or(false)
         });
-    let Some(cat) = cat else {
-        return Ok(());
-    };
-    let cer = extract_dir.join("vbcable-publisher.cer");
-    let export = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            &format!(
-                "(Get-AuthenticodeSignature -FilePath '{}').SignerCertificate | Export-Certificate -Type CERT -FilePath '{}' | Out-Null",
-                ps_escape(&cat),
-                ps_escape(&cer)
-            ),
-        ])
-        .status();
-    if export.ok().filter(|s| s.success()).is_none() || !cer.is_file() {
-        return Ok(());
+
+    // Export publisher cert without elevation (read-only).
+    if let Some(cat) = cat {
+        let _ = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                &format!(
+                    "try {{ (Get-AuthenticodeSignature -FilePath '{}').SignerCertificate | Export-Certificate -Type CERT -FilePath '{}' | Out-Null }} catch {{ }}",
+                    ps_escape(&cat),
+                    ps_escape(&cer)
+                ),
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
     }
-    let _ = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            &format!(
-                "Start-Process certutil.exe -ArgumentList '-addstore','TrustedPublisher','{}' -Verb RunAs -Wait",
-                ps_escape(&cer)
-            ),
-        ])
-        .status();
-    Ok(())
+
+    let cer_s = native_path(&cer);
+    let script_path = pack_dir.join("_buddio_install_vbcable.ps1");
+    let script_body = format!(
+        "$ErrorActionPreference = 'Continue'\n\
+         Set-Location -LiteralPath '{pack}'\n\
+         if (Test-Path -LiteralPath '{cer}') {{\n\
+           & certutil.exe -addstore -f TrustedPublisher '{cer}' | Out-Null\n\
+         }}\n\
+         $p = Start-Process -FilePath '{setup}' -ArgumentList '-h','-i','-H','-n' -WorkingDirectory '{pack}' -Wait -PassThru\n\
+         if ($null -eq $p) {{ exit 1 }}\n\
+         if ($null -eq $p.ExitCode) {{ exit 0 }}\n\
+         exit [int]$p.ExitCode\n",
+        pack = ps_escape_str(&pack_s),
+        cer = ps_escape_str(&cer_s),
+        setup = ps_escape_str(&setup_s),
+    );
+    fs::write(&script_path, script_body).context("write VB-CABLE install script")?;
+
+    let script_s = native_path(&script_path);
+    let launcher = format!(
+        "$ErrorActionPreference='Stop'; \
+         try {{ \
+           $p = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru \
+             -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{script}'; \
+           if ($null -eq $p) {{ exit 1223 }}; \
+           if ($null -eq $p.ExitCode) {{ exit 0 }}; \
+           exit [int]$p.ExitCode \
+         }} catch {{ \
+           $msg = [string]$_.Exception.Message; \
+           if ($msg -match 'cancel|cancelad|denied|recusad|1223|cancelada|canceled') {{ exit 1223 }}; \
+           exit 1 \
+         }}",
+        script = ps_escape_str(&script_s),
+    );
+
+    let status = Command::new("powershell")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &launcher])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .context("elevated VB-CABLE install")?;
+
+    let _ = fs::remove_file(&script_path);
+
+    let code = status.code();
+    tracing::info!(?code, "VB-CABLE elevated install finished");
+    Ok(match code {
+        Some(0) | Some(3010) | Some(1641) => ElevatedOutcome::Ok,
+        Some(1223) => ElevatedOutcome::Cancelled,
+        Some(code) => ElevatedOutcome::Failed(code),
+        None => ElevatedOutcome::Ok,
+    })
+}
+
+/// Strip Windows extended-length prefix (`\\?\`) that breaks many installers.
+fn native_path(path: &Path) -> String {
+    let s = path.to_string_lossy();
+    s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
 }
 
 fn ps_escape(path: &Path) -> String {
-    path.display().to_string().replace('\'', "''")
+    ps_escape_str(&native_path(path))
+}
+
+fn ps_escape_str(s: &str) -> String {
+    s.replace('\'', "''")
 }
 
 #[cfg(test)]

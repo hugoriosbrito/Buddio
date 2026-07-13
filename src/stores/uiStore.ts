@@ -1,5 +1,8 @@
+import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { create } from "zustand";
 import type { ImportResult } from "../lib/api";
+import * as api from "../lib/api";
 
 export type AppView =
   | "soundboard"
@@ -48,6 +51,7 @@ type UiState = {
   setImportReview: (review: ImportResult | null) => void;
   openImportReview: (review: ImportResult) => void;
   hydrateTheme: () => void;
+  applyLaunchPreferences: () => Promise<void>;
 };
 
 const THEME_KEY = "buddio.theme";
@@ -79,7 +83,6 @@ function resolveSystemTheme(): "light" | "dark" {
 function applyAccent(accent: AccentColor) {
   const root = document.documentElement;
   const hex = ACCENT_HEX[accent];
-  // Apenas a cor de destaque do usuário — brand permanece fixa no CSS.
   root.style.setProperty("--buddio-accent", hex);
   root.setAttribute("data-accent", accent);
 }
@@ -124,11 +127,21 @@ function persist(key: string, value: string) {
 
 function readBool(key: string, fallback: boolean): boolean {
   try {
-    const v = localStorage.getItem(key);
-    if (v === null) return fallback;
-    return v === "true";
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    return raw === "1" || raw === "true";
   } catch {
     return fallback;
+  }
+}
+
+async function syncAutostart(enabled: boolean) {
+  try {
+    const current = await isEnabled();
+    if (enabled && !current) await enable();
+    if (!enabled && current) await disable();
+  } catch {
+    /* not in tauri or plugin unavailable */
   }
 }
 
@@ -149,11 +162,11 @@ export const useUiStore = create<UiState>((set, get) => ({
   editorClipId: null,
   importReviewOpen: false,
   importReview: null,
-
   setView: (view) => set({ view }),
   setTheme: (theme) => {
     applyTheme(theme);
     set({ theme, themeMode: theme });
+    persist(THEME_KEY, theme);
     persist(THEME_MODE_KEY, theme);
   },
   setThemeMode: (mode) => {
@@ -161,6 +174,7 @@ export const useUiStore = create<UiState>((set, get) => ({
     applyTheme(resolved);
     set({ themeMode: mode, theme: resolved });
     persist(THEME_MODE_KEY, mode);
+    persist(THEME_KEY, resolved);
   },
   setAccent: (accent) => {
     applyAccent(accent);
@@ -177,9 +191,9 @@ export const useUiStore = create<UiState>((set, get) => ({
     persist(START_MINIMIZED_KEY, String(value));
   },
   setStartInBackground: (value) => {
-    // TODO(tauri): conectar ao autostart / hide-on-launch do shell nativo.
     set({ startInBackground: value });
     persist(START_BACKGROUND_KEY, String(value));
+    void syncAutostart(value);
   },
   setReduceMotion: (value) => {
     applyReduceMotion(value);
@@ -242,20 +256,39 @@ export const useUiStore = create<UiState>((set, get) => ({
       });
 
       if (typeof window !== "undefined") {
-        systemThemeMq?.removeEventListener("change", onSystemThemeChange);
-        systemThemeMq = window.matchMedia("(prefers-color-scheme: dark)");
-        systemThemeMq.addEventListener("change", onSystemThemeChange);
+        systemThemeMq?.removeEventListener("change", onSystemTheme);
+        if (themeMode === "system") {
+          systemThemeMq = window.matchMedia("(prefers-color-scheme: dark)");
+          systemThemeMq.addEventListener("change", onSystemTheme);
+        }
       }
+
+      void syncAutostart(startInBackground);
     } catch {
-      applyTheme("light");
+      /* ignore */
+    }
+  },
+  applyLaunchPreferences: async () => {
+    const { startMinimized } = get();
+    const argsMinimized =
+      typeof window !== "undefined" &&
+      (window.location.search.includes("minimized") ||
+        window.location.hash.includes("minimized"));
+    if (!startMinimized && !argsMinimized) return;
+    try {
+      const main = getCurrentWindow();
+      await main.hide();
+      await api.showMiniWindow();
+    } catch {
+      /* ignore */
     }
   },
 }));
 
-function onSystemThemeChange() {
-  const { themeMode } = useUiStore.getState();
-  if (themeMode !== "system") return;
-  const resolved = resolveSystemTheme();
-  applyTheme(resolved);
-  useUiStore.setState({ theme: resolved });
+function onSystemTheme() {
+  const store = useUiStore.getState();
+  if (store.themeMode !== "system") return;
+  const next = resolveSystemTheme();
+  applyTheme(next);
+  useUiStore.setState({ theme: next });
 }

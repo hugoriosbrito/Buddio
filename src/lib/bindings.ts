@@ -16,6 +16,14 @@ async importClips(paths: string[] | null) : Promise<Result<ImportResult, string>
     else return { status: "error", error: e  as any };
 }
 },
+async importFolder(path: string | null) : Promise<Result<ImportResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("import_folder", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async listClips() : Promise<Result<ClipDto[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("list_clips") };
@@ -168,6 +176,22 @@ async resumeHotkeys() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async suggestAutoHotkeys(count: number) : Promise<Result<string[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("suggest_auto_hotkeys", { count }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async syncIndexHotkeys(collectionId: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sync_index_hotkeys", { collectionId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async listCollections() : Promise<Result<CollectionDto[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("list_collections") };
@@ -280,6 +304,46 @@ async setMicMix(enabled: boolean) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async setMicRoute(mode: MicRouteModeDto, duckingDb: number | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_mic_route", { mode, duckingDb }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setVadSound(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_vad_sound", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setVoiceTargetLufs(lufs: number) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_voice_target_lufs", { lufs }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setIndexHotkeysEnabled(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_index_hotkeys_enabled", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setMicDevice(device: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_mic_device", { device }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async setPinnedClips(clipIds: string[]) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_pinned_clips", { clipIds }) };
@@ -322,6 +386,38 @@ async ensureVirtualCable() : Promise<Result<VirtualCableEnsureResult, string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async listWatchedFolders() : Promise<Result<WatchedFolderDto[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_watched_folders") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async addWatchedFolder(path: string | null, collectionId: string | null) : Promise<Result<WatchedFolderDto, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_watched_folder", { path, collectionId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async removeWatchedFolder(id: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remove_watched_folder", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setWatchedFolderEnabled(id: string, enabled: boolean) : Promise<Result<WatchedFolderDto, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_watched_folder_enabled", { id, enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -335,18 +431,35 @@ async ensureVirtualCable() : Promise<Result<VirtualCableEnsureResult, string>> {
 
 /** user-defined types **/
 
-export type AppSettings = { masterVolume: number; monitorEnabled: boolean; monitorDevice: string | null; secondaryDevice: string | null; stopAllHotkey: string | null; theme: string; activeProfileId: string | null; onboardingDone: boolean; micMixEnabled: boolean; pinnedClipIds: string[] }
-export type ClipDto = { id: string; name: string; fileHash: string; ext: string; durationMs: number; volume: number; loopEnabled: boolean; hotkey: string | null; createdAt: string; position: number; peaks: number[] | null; trimStartMs: number; trimEndMs: number | null; fadeInMs: number; fadeOutMs: number; gainDb: number; restartOnPress: boolean; stopOthers: boolean; emoji: string | null; pinned: boolean; collectionIds: string[] }
+export type AppSettings = { masterVolume: number; monitorEnabled: boolean; monitorDevice: string | null; secondaryDevice: string | null; stopAllHotkey: string | null; theme: string; activeProfileId: string | null; onboardingDone: boolean; 
+/**
+ * Legacy mirror: true when mic_route_mode is Mix or Ducking (voice present when idle).
+ */
+micMixEnabled: boolean; micRouteMode: MicRouteModeDto; duckingDb: number; vadSoundEnabled: boolean; voiceTargetLufs: number; indexHotkeysEnabled: boolean; 
+/**
+ * Physical microphone used for mic→CABLE mix (never CABLE Output).
+ */
+micDevice: string | null; pinnedClipIds: string[] }
+export type ClipDto = { id: string; name: string; fileHash: string; ext: string; durationMs: number; volume: number; loopEnabled: boolean; hotkey: string | null; createdAt: string; position: number; peaks: number[] | null; trimStartMs: number; trimEndMs: number | null; fadeInMs: number; fadeOutMs: number; gainDb: number; restartOnPress: boolean; stopOthers: boolean; emoji: string | null; pinned: boolean; collectionIds: string[]; 
+/**
+ * Integrated loudness estimate (LUFS-ish); None until analyzed.
+ */
+integratedLufs: number | null; 
+/**
+ * Auto normalization gain toward voice target (dB).
+ */
+normGainDb: number }
 export type ClipUpdate = { name: string | null; volume: number | null; loopEnabled: boolean | null; position: number | null; trimStartMs: number | null; trimEndMs: number | null; fadeInMs: number | null; fadeOutMs: number | null; gainDb: number | null; restartOnPress: boolean | null; stopOthers: boolean | null; emoji: string | null; pinned: boolean | null }
 export type CollectionDto = { id: string; name: string; color: string; position: number; clipCount: number }
 export type CollectionUpdate = { name: string | null; color: string | null; position: number | null }
 export type DiagnosticsDto = { devices: OutputDeviceDto[]; sampleRate: number | null; warnings: string[]; monitorDevice: string | null; secondaryDevice: string | null; monitorEnabled: boolean }
 export type ImportResult = { imported: ClipDto[]; duplicates: string[]; errors: string[] }
 export type InputDeviceDto = { name: string; isDefault: boolean }
+export type MicRouteModeDto = "mix" | "ducking" | "soundOnly"
 export type OutputDeviceDto = { name: string; isDefault: boolean }
 export type OutputDevicesConfig = { monitorEnabled: boolean; monitor: string | null; secondary: string | null }
-export type ProfileDto = { id: string; name: string; monitorEnabled: boolean; monitorDevice: string | null; secondaryDevice: string | null; masterVolume: number; collectionId: string | null; isDefault: boolean }
-export type ProfileUpdate = { name: string | null; monitorEnabled: boolean | null; monitorDevice: string | null; secondaryDevice: string | null; masterVolume: number | null; collectionId: string | null; isDefault: boolean | null }
+export type ProfileDto = { id: string; name: string; monitorEnabled: boolean; monitorDevice: string | null; secondaryDevice: string | null; masterVolume: number; collectionId: string | null; isDefault: boolean; micRouteMode: MicRouteModeDto; duckingDb: number }
+export type ProfileUpdate = { name: string | null; monitorEnabled: boolean | null; monitorDevice: string | null; secondaryDevice: string | null; masterVolume: number | null; collectionId: string | null; isDefault: boolean | null; micRouteMode: MicRouteModeDto | null; duckingDb: number | null }
 export type VirtualCableEnsureResult = { status: VirtualCableStatusDto; message: string; rebootRequired: boolean }
 export type VirtualCableStatusDto = { 
 /**
@@ -373,6 +486,7 @@ rebootRequired: boolean;
  * We asked for reboot earlier; onboarding should resume auto-config.
  */
 pendingAfterReboot: boolean }
+export type WatchedFolderDto = { id: string; path: string; collectionId: string | null; enabled: boolean }
 
 /** tauri-specta globals **/
 

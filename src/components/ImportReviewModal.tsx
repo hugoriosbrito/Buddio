@@ -9,6 +9,7 @@ import { HotkeyRecorder } from "./HotkeyRecorder";
 import { Button } from "./ui/Button";
 import { Modal } from "./ui/Modal";
 import { Select } from "./ui/Select";
+import { Toggle } from "./ui/Toggle";
 
 type Draft = {
   name: string;
@@ -30,14 +31,18 @@ export function ImportReviewModal() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoHotkeys, setAutoHotkeys] = useState(true);
 
   const imported = review?.imported ?? [];
 
   useEffect(() => {
     if (!open || !review) return;
-    const next: Record<string, Draft> = {};
+    let cancelled = false;
+
+    // Fresh batch: rebuild drafts from imported clips.
+    const base: Record<string, Draft> = {};
     for (const clip of review.imported) {
-      next[clip.id] = {
+      base[clip.id] = {
         name: clip.name,
         hotkey: clip.hotkey,
         collectionId: clip.collectionIds[0] ?? null,
@@ -49,10 +54,87 @@ export function ImportReviewModal() {
             : "",
       };
     }
-    setDrafts(next);
+    setDrafts(base);
     setActiveId(review.imported[0]?.id ?? null);
     setError(null);
+
+    if (!autoHotkeys) return;
+
+    void (async () => {
+      const need = review.imported.filter((c) => !c.hotkey).length;
+      if (need === 0) return;
+      let suggested: string[] = [];
+      try {
+        suggested = await api.suggestAutoHotkeys(need);
+      } catch {
+        return;
+      }
+      if (cancelled || suggested.length === 0) return;
+
+      setDrafts((prev) => {
+        const next = { ...prev };
+        let i = 0;
+        for (const clip of review.imported) {
+          if (!clip.hotkey && suggested[i] && next[clip.id]) {
+            next[clip.id] = { ...next[clip.id], hotkey: suggested[i] };
+            i += 1;
+          }
+        }
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [open, review]);
+
+  // Toggle only remaps hotkeys; keep name / collection / icon edits.
+  useEffect(() => {
+    if (!open || !review) return;
+    let cancelled = false;
+
+    if (!autoHotkeys) {
+      setDrafts((prev) => {
+        const next = { ...prev };
+        for (const clip of review.imported) {
+          if (!next[clip.id]) continue;
+          next[clip.id] = { ...next[clip.id], hotkey: clip.hotkey };
+        }
+        return next;
+      });
+      return;
+    }
+
+    void (async () => {
+      const need = review.imported.filter((c) => !c.hotkey).length;
+      if (need === 0) return;
+      let suggested: string[] = [];
+      try {
+        suggested = await api.suggestAutoHotkeys(need);
+      } catch {
+        return;
+      }
+      if (cancelled || suggested.length === 0) return;
+      setDrafts((prev) => {
+        const next = { ...prev };
+        let i = 0;
+        for (const clip of review.imported) {
+          if (!clip.hotkey && suggested[i] && next[clip.id]) {
+            next[clip.id] = { ...next[clip.id], hotkey: suggested[i] };
+            i += 1;
+          }
+        }
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // intentionally only autoHotkeys — open/review handled above
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoHotkeys]);
 
   const active = useMemo(
     () => imported.find((c) => c.id === activeId) ?? null,
@@ -94,6 +176,10 @@ export function ImportReviewModal() {
         }
       }
       await hydrate();
+      const collectionId = useUiStore.getState().selectedCollectionId;
+      void api.syncIndexHotkeys(collectionId).catch(() => {
+        /* ignore */
+      });
       if (imported[0]) select(imported[0].id);
       close();
     } catch (err) {
@@ -138,6 +224,17 @@ export function ImportReviewModal() {
             {readyCount} prontos
             {attention > 0 ? ` · ${attention} precisam de atenção` : ""}
           </p>
+
+          <div className="mt-3 rounded-[12px] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] px-3 py-2">
+            <Toggle
+              label="Atribuir atalhos automaticamente"
+              checked={autoHotkeys}
+              onChange={setAutoHotkeys}
+            />
+            <p className="mt-1 text-[11px] text-[var(--buddio-text-muted)]">
+              Sugere atalhos livres (Ctrl+Alt+N após F1–F12, que o Windows costuma rejeitar).
+            </p>
+          </div>
 
           <ul className="mt-4 flex flex-col gap-2">
             {imported.map((clip) => (

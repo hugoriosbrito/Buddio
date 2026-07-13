@@ -25,12 +25,19 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Fetch VB-CABLE driver pack
+        run: bun run fetch:vbcable
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Buddio ${{ github.ref_name }}"
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: --bundles nsis
+          # Optional Authenticode: set WINDOWS_CERTIFICATE* secrets and wire
+          # signing in a follow-up step (see docs/release.md).
+          # NSIS installs VB-CABLE on setup and removes it on uninstall when
+          # Buddio owned that install (see src-tauri/windows/hooks.nsh).

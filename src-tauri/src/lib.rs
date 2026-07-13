@@ -8,7 +8,8 @@ use std::sync::Arc;
 
 use audio_engine::{AudioCommand, AudioEngineHandle, AudioEvent};
 use managers::{
-    CollectionsManager, HotkeyManager, LibraryManager, ProfilesManager, SettingsManager,
+    CollectionsManager, FolderWatchManager, HotkeyManager, LibraryManager, ProfilesManager,
+    SettingsManager,
 };
 use parking_lot::Mutex;
 use tauri::{
@@ -55,6 +56,7 @@ pub struct AppState {
     pub hotkeys: Arc<HotkeyManager>,
     pub collections: Arc<CollectionsManager>,
     pub profiles: Arc<ProfilesManager>,
+    pub folder_watch: Arc<FolderWatchManager>,
     pub audio: AudioEngineHandle,
     pub mic_meter: audio_engine::MicMeter,
 }
@@ -64,6 +66,7 @@ pub fn run() {
     let builder =
         tauri_specta::Builder::<tauri::Wry>::new().commands(tauri_specta::collect_commands![
             commands::import_clips,
+            commands::import_folder,
             commands::list_clips,
             commands::update_clip,
             commands::delete_clip,
@@ -83,6 +86,8 @@ pub fn run() {
             commands::set_stop_all_hotkey,
             commands::suspend_hotkeys,
             commands::resume_hotkeys,
+            commands::suggest_auto_hotkeys,
+            commands::sync_index_hotkeys,
             commands::list_collections,
             commands::create_collection,
             commands::update_collection,
@@ -97,11 +102,20 @@ pub fn run() {
             commands::set_theme,
             commands::set_onboarding_done,
             commands::set_mic_mix,
+            commands::set_mic_route,
+            commands::set_vad_sound,
+            commands::set_voice_target_lufs,
+            commands::set_index_hotkeys_enabled,
+            commands::set_mic_device,
             commands::set_pinned_clips,
             commands::show_mini_window,
             commands::hide_mini_window,
             commands::get_virtual_cable_status,
             commands::ensure_virtual_cable,
+            commands::list_watched_folders,
+            commands::add_watched_folder,
+            commands::remove_watched_folder,
+            commands::set_watched_folder_enabled,
         ]);
 
     #[cfg(debug_assertions)]
@@ -135,8 +149,15 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
+                // Benign MP3 bit-reservoir quirks — spam the console on every decode.
+                .level_for("symphonia_bundle_mp3", log::LevelFilter::Error)
+                .level_for("symphonia_core", log::LevelFilter::Error)
                 .build(),
         )
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
@@ -159,7 +180,12 @@ pub fn run() {
             let library = Arc::new(LibraryManager::new(conn.clone(), assets_dir)?);
             let settings = Arc::new(SettingsManager::new(conn.clone()));
             let collections = Arc::new(CollectionsManager::new(conn.clone()));
-            let profiles = Arc::new(ProfilesManager::new(conn));
+            let profiles = Arc::new(ProfilesManager::new(conn.clone()));
+            let folder_watch = Arc::new(FolderWatchManager::new(
+                conn,
+                library.clone(),
+                collections.clone(),
+            ));
             let hotkeys = Arc::new(HotkeyManager::new());
             // Own Win32 RegisterHotKey HWND on this UI thread (no tauri global-shortcut plugin).
             hotkeys.init_os(app.handle())?;
@@ -173,6 +199,14 @@ pub fn run() {
                 monitor_enabled: loaded.monitor_enabled,
                 monitor: loaded.monitor_device.clone(),
                 secondary: loaded.secondary_device.clone(),
+            });
+            let _ = audio.send(AudioCommand::SetMicRoute {
+                mode: loaded.mic_route_mode.to_engine(),
+                ducking_db: loaded.ducking_db,
+                input_device: loaded.mic_device.clone(),
+            });
+            let _ = audio.send(AudioCommand::SetVadSound {
+                enabled: loaded.vad_sound_enabled,
             });
 
             // Preload all clips into hot cache
@@ -192,10 +226,15 @@ pub fn run() {
                 hotkeys: hotkeys.clone(),
                 collections,
                 profiles,
+                folder_watch: folder_watch.clone(),
                 audio,
                 mic_meter: audio_engine::MicMeter::new(),
             };
             app.manage(state);
+
+            if let Err(err) = folder_watch.start(app.handle().clone()) {
+                tracing::warn!(error = %err, "failed to start folder watch");
+            }
 
             // Forward audio events to the frontend
             let handle = app.handle().clone();

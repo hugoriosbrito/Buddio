@@ -9,7 +9,7 @@
   e dispare-o na hora, em jogos, no Discord, em transmissões ou em qualquer app em foco.</p>
 
   <p>
-    <img src="https://img.shields.io/badge/status-alpha-orange" alt="Status: alpha" />
+    <img src="https://img.shields.io/badge/status-stable-brightgreen" alt="Status: stable" />
     <img src="https://img.shields.io/badge/licen%C3%A7a-MIT-blue" alt="Licença: MIT" />
     <img src="https://img.shields.io/badge/feito%20com-Tauri%202-24C8DB" alt="Feito com Tauri 2" />
     <img src="https://img.shields.io/badge/plataforma-Windows-0078D6" alt="Plataforma: Windows" />
@@ -71,14 +71,23 @@ segundo".
 
 ## 🧭 Status
 
-O Buddio é um projeto jovem, construído e usado no dia a dia pelo próprio
-autor. O soundboard principal, os atalhos, o roteamento, os perfis e o Buddio
-Mini já funcionam. Ainda não existe um instalador pra baixar, então testar
-hoje significa compilar a partir do código-fonte, o que leva só alguns
-minutos. Veja a seção de
-[Contribuição](#-contribuindo--rodando-a-partir-do-código-fonte) logo abaixo
-para o passo a passo. Suporte a macOS e Linux está no radar; o Windows é a
-casa por enquanto.
+O Buddio é um projeto estável no Windows (v1.0), construído e usado no dia a dia
+pelo próprio autor. O soundboard principal, os atalhos, o roteamento, os perfis e
+o Buddio Mini já funcionam. No Windows, o instalador NSIS (`.exe`) também instala o
+[VB-CABLE](https://vb-cable.com) quando falta e o remove na desinstalação
+somente se o Buddio tiver sido quem instalou. O SmartScreen pode avisar até
+haver assinatura de código — veja [`docs/release.md`](docs/release.md).
+Suporte a macOS e Linux está no radar; o Windows é a casa por enquanto.
+
+### Baixar / gerar o instalador
+
+```bash
+bun install
+bun run fetch:vbcable   # pacote oficial da VB-Audio (donationware)
+bun run tauri build     # → target/release/bundle/nsis/Buddio_*_x64-setup.exe
+```
+
+Ou publique uma tag `v*` — o workflow `.github/workflows/release.yml` gera o mesmo setup.exe.
 
 ## 🤝 Contribuindo & rodando a partir do código-fonte
 

@@ -34,9 +34,15 @@ export function StatusBar() {
       />
       <StatusItem
         icon={<Headphones size={14} weight="bold" />}
-        label="Mic mix"
-        value={settings.micMixEnabled ? "Ligado" : "Desligado"}
-        dot={settings.micMixEnabled}
+        label="Mic"
+        value={
+          settings.micRouteMode === "soundOnly"
+            ? "Só som"
+            : settings.micRouteMode === "ducking"
+              ? "Ducking"
+              : "Misturar"
+        }
+        dot={settings.micRouteMode !== "soundOnly"}
       />
     </footer>
   );

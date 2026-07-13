@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Buddio",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "com.buddio.app",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "bun run build && powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/fetch-vbcable.ps1",
     "frontendDist": "../dist"
   },
   "app": {
@@ -55,14 +55,16 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "resources/samples/sound-test-sample.wav"
+      "resources/samples/sound-test-sample.wav",
+      "resources/vbcable/pack/"
     ],
     "licenseFile": "../LICENSE",
     "windows": {
       "nsis": {
-        "installMode": "currentUser",
+        "installMode": "perMachine",
         "languages": ["English", "PortugueseBR"],
-        "displayLanguageSelector": true
+        "displayLanguageSelector": true,
+        "installerHooks": "./windows/hooks.nsh"
       }
     }
   }

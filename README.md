@@ -9,7 +9,7 @@
   and fire it instantly in games, Discord, streams, or any app in focus.</p>
 
   <p>
-    <img src="https://img.shields.io/badge/status-alpha-orange" alt="Status: alpha" />
+    <img src="https://img.shields.io/badge/status-stable-brightgreen" alt="Status: stable" />
     <img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT" />
     <img src="https://img.shields.io/badge/built%20with-Tauri%202-24C8DB" alt="Built with Tauri 2" />
     <img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Platform: Windows" />
@@ -70,13 +70,23 @@ the key and it plays instantly: no loading spinner, no "just a sec."
 
 ## 🧭 Status
 
-Buddio is a young project, built and used day to day by its own author. The
-core soundboard, hotkeys, routing, profiles, and Buddio Mini already work.
-There's no installer to download just yet, so trying it out today means
-building it from source, and that only takes a couple of minutes. Head to the
-[Contributing](#-contributing--running-from-source) section below for the
-exact steps. macOS and Linux support is on the roadmap; Windows is home base
-for now.
+Buddio 1.0 is stable on Windows, built and used day to day by its own author.
+The core soundboard, hotkeys, routing, profiles, and Buddio Mini already work.
+Windows ships with an NSIS installer (`.exe`) that also installs
+[VB-CABLE](https://vb-cable.com) when needed and removes it on uninstall only
+if Buddio installed it. SmartScreen may warn until the binary is code-signed —
+see [`docs/release.md`](docs/release.md). macOS and Linux support is on the
+roadmap; Windows is home base for now.
+
+### Download / build the installer
+
+```bash
+bun install
+bun run fetch:vbcable   # official VB-Audio pack (donationware)
+bun run tauri build     # → target/release/bundle/nsis/Buddio_*_x64-setup.exe
+```
+
+Or push a `v*` tag — `.github/workflows/release.yml` builds the same setup.exe.
 
 ## 🤝 Contributing & running from source
 

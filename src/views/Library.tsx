@@ -1,13 +1,20 @@
-import { Trash } from "@phosphor-icons/react";
-import { useMemo, type ReactNode } from "react";
+import { FolderPlus, Trash } from "@phosphor-icons/react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ClipIcon } from "../components/ClipIcon";
 import { ImportDropzone } from "../components/ImportDropzone";
 import { Button } from "../components/ui/Button";
 import { HotkeyChip } from "../components/ui/HotkeyChip";
 import { Search } from "../components/ui/Search";
 import { cn } from "../lib/cn";
-import type { ClipDto } from "../lib/api";
-import { playClip, stopClip } from "../lib/api";
+import type { ClipDto, WatchedFolderDto } from "../lib/api";
+import {
+  addWatchedFolder,
+  listWatchedFolders,
+  playClip,
+  removeWatchedFolder,
+  setWatchedFolderEnabled,
+  stopClip,
+} from "../lib/api";
 import { useCollectionsStore } from "../stores/collectionsStore";
 import { useLibraryStore } from "../stores/libraryStore";
 import { usePlaybackStore } from "../stores/playbackStore";
@@ -21,10 +28,17 @@ function formatDuration(ms: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function folderLabel(path: string): string {
+  const parts = path.replace(/\\/g, "/").split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? path;
+}
+
 export function LibraryView() {
   const query = useLibraryStore((s) => s.query);
   const setQuery = useLibraryStore((s) => s.setQuery);
   const importFiles = useLibraryStore((s) => s.importFiles);
+  const importFolder = useLibraryStore((s) => s.importFolder);
+  const hydrate = useLibraryStore((s) => s.hydrate);
   const error = useLibraryStore((s) => s.error);
   const notice = useLibraryStore((s) => s.notice);
   const clearError = useLibraryStore((s) => s.clearError);
@@ -38,6 +52,21 @@ export function LibraryView() {
   const collectionId = useUiStore((s) => s.selectedCollectionId);
   const setSelectedCollectionId = useUiStore((s) => s.setSelectedCollectionId);
   const playingIds = usePlaybackStore((s) => s.playingIds);
+
+  const [watched, setWatched] = useState<WatchedFolderDto[]>([]);
+  const [watchedBusy, setWatchedBusy] = useState(false);
+
+  const refreshWatched = useCallback(async () => {
+    try {
+      setWatched(await listWatchedFolders());
+    } catch (err) {
+      useLibraryStore.setState({ error: String(err) });
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshWatched();
+  }, [refreshWatched]);
 
   const activeCollection = collections.find((c) => c.id === collectionId);
 
@@ -58,6 +87,44 @@ export function LibraryView() {
   const withoutHotkey = clips.length - withHotkey;
   const selected = clips.find((c) => c.id === selectedId) ?? null;
 
+  const onAddWatched = async () => {
+    setWatchedBusy(true);
+    try {
+      await addWatchedFolder(null, collectionId);
+      await refreshWatched();
+      await hydrate();
+      setNotice("Pasta monitorada adicionada.");
+    } catch (err) {
+      useLibraryStore.setState({ error: String(err) });
+    } finally {
+      setWatchedBusy(false);
+    }
+  };
+
+  const onRemoveWatched = async (id: string) => {
+    setWatchedBusy(true);
+    try {
+      await removeWatchedFolder(id);
+      await refreshWatched();
+    } catch (err) {
+      useLibraryStore.setState({ error: String(err) });
+    } finally {
+      setWatchedBusy(false);
+    }
+  };
+
+  const onToggleWatched = async (folder: WatchedFolderDto) => {
+    setWatchedBusy(true);
+    try {
+      await setWatchedFolderEnabled(folder.id, !folder.enabled);
+      await refreshWatched();
+    } catch (err) {
+      useLibraryStore.setState({ error: String(err) });
+    } finally {
+      setWatchedBusy(false);
+    }
+  };
+
   return (
     <div className="flex h-full flex-col gap-[var(--space-gap)] overflow-hidden px-[var(--space-pad-x)] py-[var(--space-pad-y)]">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -75,6 +142,13 @@ export function LibraryView() {
             onClear={() => setQuery("")}
             className="w-[240px] flex-none"
           />
+          <Button
+            variant="secondary"
+            icon={<FolderPlus size={16} weight="bold" />}
+            onClick={() => void importFolder(null)}
+          >
+            Importar pasta
+          </Button>
           <ImportDropzone
             onImport={importFiles}
             compact
@@ -88,6 +162,70 @@ export function LibraryView() {
         <StatCard label="Com atalho" value={withHotkey} />
         <StatCard label="Sem atalho" value={withoutHotkey} />
       </div>
+
+      <section className="rounded-[var(--radius-card)] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-[13px] font-semibold">Pastas monitoradas</h2>
+            <p className="mt-0.5 text-[12px] text-[var(--buddio-text-secondary)]">
+              Novos áudios nessas pastas entram na biblioteca automaticamente.
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            icon={<FolderPlus size={16} weight="bold" />}
+            loading={watchedBusy}
+            onClick={() => void onAddWatched()}
+          >
+            Adicionar pasta
+          </Button>
+        </div>
+        {watched.length === 0 ? (
+          <p className="mt-3 text-[12px] text-[var(--buddio-text-muted)]">
+            Nenhuma pasta monitorada ainda.
+          </p>
+        ) : (
+          <ul className="mt-3 flex flex-col gap-2">
+            {watched.map((folder) => (
+              <li
+                key={folder.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-control)] border border-[var(--buddio-border-subtle)] bg-[var(--buddio-surface-secondary)]/40 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-[13px] font-semibold">
+                    {folderLabel(folder.path)}
+                    {!folder.enabled ? (
+                      <span className="ml-2 text-[11px] font-medium text-[var(--buddio-text-muted)]">
+                        pausada
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="truncate text-[11px] text-[var(--buddio-text-secondary)]">
+                    {folder.path}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    disabled={watchedBusy}
+                    onClick={() => void onToggleWatched(folder)}
+                  >
+                    {folder.enabled ? "Pausar" : "Ativar"}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    icon={<Trash size={16} weight="bold" />}
+                    disabled={watchedBusy}
+                    onClick={() => void onRemoveWatched(folder.id)}
+                  >
+                    Remover
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <div className="flex flex-wrap items-center gap-2">
         <FilterChip

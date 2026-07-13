@@ -4,7 +4,6 @@ import { Button } from "../components/ui/Button";
 import { PromptModal } from "../components/ui/PromptModal";
 import { Search } from "../components/ui/Search";
 import { Select } from "../components/ui/Select";
-import { Toggle } from "../components/ui/Toggle";
 import { cn } from "../lib/cn";
 import * as api from "../lib/api";
 import { useCollectionsStore } from "../stores/collectionsStore";
@@ -29,8 +28,6 @@ export function ProfilesView() {
   const [createOpen, setCreateOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [monitorVoice, setMonitorVoice] = useState(false);
-  const [ducking, setDucking] = useState(true);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -256,28 +253,45 @@ export function ProfilesView() {
                 <p className="text-[13px] font-semibold text-[var(--buddio-text-secondary)]">
                   Mixagem
                 </p>
-                <Toggle
-                  label="Misturar microfone"
-                  checked={settings.micMixEnabled}
-                  onChange={async (enabled) => {
-                    try {
-                      await api.setMicMix(enabled);
-                      await hydrateSettings();
-                    } catch (err) {
-                      push({ kind: "error", message: String(err) });
-                    }
-                  }}
-                />
-                <Toggle
-                  label="Monitorar minha voz"
-                  checked={monitorVoice}
-                  onChange={setMonitorVoice}
-                />
-                <Toggle
-                  label="Ducking automático"
-                  checked={ducking}
-                  onChange={setDucking}
-                />
+                <Field label="Modo do microfone">
+                  <Select
+                    aria-label="Modo do microfone do perfil"
+                    value={selected.micRouteMode}
+                    options={[
+                      { value: "mix", label: "Misturar" },
+                      { value: "ducking", label: "Ducking" },
+                      { value: "soundOnly", label: "Só som" },
+                    ]}
+                    onChange={(next) => {
+                      void api
+                        .updateProfile(selected.id, {
+                          micRouteMode: next as
+                            | "mix"
+                            | "ducking"
+                            | "soundOnly",
+                        })
+                        .then(() => hydrate());
+                    }}
+                  />
+                </Field>
+                <Field label="Ducking">
+                  <Select
+                    aria-label="Ducking do perfil"
+                    value={String(selected.duckingDb)}
+                    options={[
+                      { value: "0", label: "0 dB" },
+                      { value: "-8", label: "-8 dB" },
+                      { value: "-12", label: "-12 dB" },
+                    ]}
+                    onChange={(next) => {
+                      void api
+                        .updateProfile(selected.id, {
+                          duckingDb: Number(next),
+                        })
+                        .then(() => hydrate());
+                    }}
+                  />
+                </Field>
               </div>
 
               <div className="mt-5 flex flex-wrap gap-2">

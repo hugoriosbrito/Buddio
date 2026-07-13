@@ -16,6 +16,7 @@ type LibraryState = {
   setNotice: (notice: string | null) => void;
   clearError: () => void;
   importFiles: (paths?: string[] | null) => Promise<void>;
+  importFolder: (path?: string | null) => Promise<void>;
   updateSelected: (update: Parameters<typeof api.updateClip>[1]) => Promise<void>;
   remove: (id: string) => Promise<void>;
   setHotkey: (id: string, hotkey: string | null) => Promise<void>;
@@ -54,6 +55,29 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ error: null, loading: true });
     try {
       const result = await api.importClips(paths);
+      const clips = await api.listClips();
+      set({
+        clips,
+        loading: false,
+        error: null,
+        selectedId: result.imported[0]?.id ?? get().selectedId,
+      });
+      if (
+        result.imported.length > 0 ||
+        result.duplicates.length > 0 ||
+        result.errors.length > 0
+      ) {
+        useUiStore.getState().openImportReview(result);
+      }
+    } catch (err) {
+      set({ loading: false, error: String(err) });
+    }
+  },
+
+  importFolder: async (path = null) => {
+    set({ error: null, loading: true });
+    try {
+      const result = await api.importFolder(path);
       const clips = await api.listClips();
       set({
         clips,

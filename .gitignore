@@ -49,6 +49,10 @@ e2e/.cache/
 e2e/artifacts/
 e2e/.db-backup/
 
+# VB-CABLE driver pack (fetched by scripts/fetch-vbcable.ps1 — do not commit)
+src-tauri/resources/vbcable/pack/
+src-tauri/resources/vbcable/*.zip
+
 # AI tools & assistants
 .claude/
 .cursor/

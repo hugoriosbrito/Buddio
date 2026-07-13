@@ -4,6 +4,16 @@
 //! that plugin wraps every register/unregister in `run_on_main_thread` + `mpsc::recv`,
 //! which surfaces opaque failures (often just our anyhow context) and is fragile during
 //! Tauri setup. Buddio owns the manager on the UI thread and registers directly.
+//!
+//! ## Limitations
+//!
+//! - **Mouse chords** (`Ctrl+Mouse4`, …): captured and stored in the UI/DB, but
+//!   `global-hotkey` 0.8 only supports keyboard `Code`s. Registration is skipped with a
+//!   warning toast (`hotkey-event` / `unsupported`).
+//! - **Alt+NN multi-digit** (e.g. `Alt+17`): not feasible — the crate registers a single
+//!   key + modifiers. We register `Alt+Numpad1`..`Alt+Numpad9` / `Alt+Numpad0` for
+//!   positions 1–10 instead.
+//! - **Bare F1–F12**: fragile on Windows (see [`is_fragile_accelerator`]).
 
 use std::collections::HashMap;
 use std::sync::mpsc;
@@ -22,6 +32,7 @@ use crate::AppState;
 #[derive(Debug, Clone)]
 enum HotkeyAction {
     PlayClip(String),
+    PlayIndex(usize),
     StopAll,
 }
 
@@ -43,6 +54,12 @@ pub struct HotkeyManager {
     registered: Mutex<HashMap<String, HotKey>>,
     /// hotkey id → action
     actions: Arc<Mutex<HashMap<u32, HotkeyAction>>>,
+    /// Ordered clip ids for [`HotkeyAction::PlayIndex`] (position 0 = first pad).
+    index_clip_ids: Arc<Mutex<Vec<String>>>,
+    /// Last collection filter used for index hotkeys (`None` = all clips).
+    index_collection_id: Mutex<Option<String>>,
+    /// Accelerators owned by index / numpad bindings (subset of `registered`).
+    index_accelerators: Mutex<Vec<String>>,
     os: Arc<Mutex<Option<HotkeyOs>>>,
     main_thread_id: Mutex<ThreadId>,
 }
@@ -55,6 +72,9 @@ impl HotkeyManager {
             suspended: Mutex::new(false),
             registered: Mutex::new(HashMap::new()),
             actions: Arc::new(Mutex::new(HashMap::new())),
+            index_clip_ids: Arc::new(Mutex::new(Vec::new())),
+            index_collection_id: Mutex::new(None),
+            index_accelerators: Mutex::new(Vec::new()),
             os: Arc::new(Mutex::new(None)),
             main_thread_id: Mutex::new(std::thread::current().id()),
         }
@@ -68,6 +88,7 @@ impl HotkeyManager {
         *self.os.lock() = Some(HotkeyOs(manager));
 
         let actions = self.actions.clone();
+        let index_clip_ids = self.index_clip_ids.clone();
         let app_handle = app.clone();
         // OnceCell — only one handler for the process. Do not also init the Tauri plugin.
         GlobalHotKeyEvent::set_event_handler(Some(move |event: GlobalHotKeyEvent| {
@@ -87,6 +108,19 @@ impl HotkeyManager {
                     if let Err(err) = play_clip_by_id(&app_handle, &state, &clip_id) {
                         warn!(error = %err, "hotkey play failed");
                         eprintln!("[buddio] HOTKEY PLAY FAILED clip={clip_id}: {err:#}");
+                    }
+                }
+                HotkeyAction::PlayIndex(index) => {
+                    let clip_id = index_clip_ids.lock().get(index).cloned();
+                    let Some(clip_id) = clip_id else {
+                        eprintln!("[buddio] index hotkey {index} — no clip at position");
+                        return;
+                    };
+                    eprintln!("[buddio] HOTKEY FIRED index={index} clip={clip_id}");
+                    info!(index, clip_id = %clip_id, "index hotkey pressed");
+                    let state = app_handle.state::<AppState>();
+                    if let Err(err) = play_clip_by_id(&app_handle, &state, &clip_id) {
+                        warn!(error = %err, "index hotkey play failed");
                     }
                 }
                 HotkeyAction::StopAll => {
@@ -112,7 +146,7 @@ impl HotkeyManager {
         *self.suspended.lock()
     }
 
-    /// Register all clip hotkeys + stop-all from current library/settings.
+    /// Register all clip hotkeys + stop-all + index hotkeys from current library/settings.
     pub fn sync_from_library(&self, app: &AppHandle) -> Result<()> {
         let state = app.state::<AppState>();
         let clips = state.library.list_clips()?;
@@ -144,6 +178,9 @@ impl HotkeyManager {
         }
 
         self.register_all_current(app, &bindings, stop_all.as_deref());
+
+        let collection_id = self.index_collection_id.lock().clone();
+        self.sync_index_hotkeys(app, collection_id)?;
         Ok(())
     }
 
@@ -153,6 +190,76 @@ impl HotkeyManager {
             *self.suspended.lock() = false;
         }
         self.sync_from_library(app)
+    }
+
+    /// Rebuild Ctrl+Alt+N / Alt+NumpadN → pad position bindings.
+    ///
+    /// `collection_id`: when `Some`, only clips in that collection (ordered by position);
+    /// when `None`, all clips ordered by position.
+    pub fn sync_index_hotkeys(
+        &self,
+        app: &AppHandle,
+        collection_id: Option<String>,
+    ) -> Result<()> {
+        *self.index_collection_id.lock() = collection_id.clone();
+
+        // Drop previous index-only accelerators (leave clip / stop-all bindings).
+        let previous = std::mem::take(&mut *self.index_accelerators.lock());
+        for key in previous {
+            let _ = self.unregister_accelerator(app, &key);
+        }
+        *self.index_clip_ids.lock() = Vec::new();
+
+        let state = app.state::<AppState>();
+        let settings = state.settings.load()?;
+        if !settings.index_hotkeys_enabled {
+            return Ok(());
+        }
+        if self.is_suspended() {
+            debug!("index hotkey sync deferred (suspended)");
+            return Ok(());
+        }
+
+        let mut clips = state.library.list_clips()?;
+        if let Some(ref cid) = collection_id {
+            clips.retain(|c| c.collection_ids.iter().any(|id| id == cid));
+        }
+        clips.sort_by_key(|c| (c.position, c.created_at.clone()));
+
+        let ids: Vec<String> = clips.into_iter().map(|c| c.id).collect();
+        *self.index_clip_ids.lock() = ids.clone();
+
+        let mut registered_index = Vec::new();
+        for (index, _) in ids.iter().enumerate().take(10) {
+            let n = if index == 9 { 0 } else { index + 1 };
+            let chords = [
+                normalize_shortcut(&format!("CommandOrControl+Alt+{n}")),
+                normalize_shortcut(&format!("Alt+Numpad{n}")),
+            ];
+            for chord in chords {
+                if self.registered.lock().contains_key(&chord) {
+                    warn!(
+                        hotkey = %chord,
+                        index,
+                        "index hotkey skipped — already registered"
+                    );
+                    continue;
+                }
+                match self.register_action(app, &chord, HotkeyAction::PlayIndex(index)) {
+                    Ok(()) => registered_index.push(chord),
+                    Err(err) => {
+                        warn!(
+                            error = %err,
+                            hotkey = %chord,
+                            index,
+                            "failed to register index hotkey"
+                        );
+                    }
+                }
+            }
+        }
+        *self.index_accelerators.lock() = registered_index;
+        Ok(())
     }
 
     pub fn set_clip_hotkey(
@@ -190,7 +297,11 @@ impl HotkeyManager {
                     .lock()
                     .insert(clip_id.to_string(), key.clone());
                 if !self.is_suspended() {
-                    self.register_clip(app, clip_id, &key)?;
+                    if is_mouse_accelerator(&key) {
+                        emit_unsupported_mouse(app, Some(clip_id), &key);
+                    } else {
+                        self.register_clip(app, clip_id, &key)?;
+                    }
                 } else {
                     debug!(
                         clip_id = %clip_id,
@@ -215,6 +326,10 @@ impl HotkeyManager {
             .map(|s| normalize_shortcut(&s));
         *self.stop_all.lock() = normalized.clone();
         if let Some(key) = normalized {
+            if is_mouse_accelerator(&key) {
+                emit_unsupported_mouse(app, None, &key);
+                return Ok(());
+            }
             if !self.is_suspended() {
                 self.register_stop_all(app, &key)?;
             }
@@ -240,6 +355,20 @@ impl HotkeyManager {
         self.sync_from_library(app)?;
         info!("hotkeys resumed");
         Ok(())
+    }
+
+    /// Currently used accelerators (clips + stop-all), normalized.
+    pub fn used_accelerators(&self) -> Vec<String> {
+        let mut used: Vec<String> = self.bindings.lock().values().cloned().collect();
+        if let Some(stop) = self.stop_all.lock().clone() {
+            used.push(stop);
+        }
+        used
+    }
+
+    /// Last collection filter for index hotkeys (`None` = all clips).
+    pub fn index_collection_filter(&self) -> Option<String> {
+        self.index_collection_id.lock().clone()
     }
 
     fn register_all_current(
@@ -271,6 +400,11 @@ impl HotkeyManager {
                 continue;
             }
 
+            if is_mouse_accelerator(hotkey) {
+                emit_unsupported_mouse(app, Some(clip_id), hotkey);
+                continue;
+            }
+
             if let Err(err) = self.register_clip(app, clip_id, hotkey) {
                 warn!(
                     error = %err,
@@ -296,7 +430,9 @@ impl HotkeyManager {
             }
         }
         if let Some(stop) = stop_all {
-            if let Err(err) = self.register_stop_all(app, stop) {
+            if is_mouse_accelerator(stop) {
+                emit_unsupported_mouse(app, None, stop);
+            } else if let Err(err) = self.register_stop_all(app, stop) {
                 warn!(error = %err, hotkey = %stop, "failed to register stop-all hotkey");
                 eprintln!("[buddio] FAILED register stop-all={stop}: {err:#}");
                 let _ = app.emit(
@@ -315,10 +451,53 @@ impl HotkeyManager {
     }
 
     fn register_clip(&self, app: &AppHandle, clip_id: &str, hotkey: &str) -> Result<()> {
+        self.register_action(app, hotkey, HotkeyAction::PlayClip(clip_id.to_string()))?;
+        info!(clip_id = %clip_id, hotkey = %normalize_shortcut(hotkey), "registered clip hotkey");
+        eprintln!(
+            "[buddio] registered clip={clip_id} hotkey={}",
+            normalize_shortcut(hotkey)
+        );
+        Ok(())
+    }
+
+    fn register_stop_all(&self, app: &AppHandle, hotkey: &str) -> Result<()> {
+        self.register_action(app, hotkey, HotkeyAction::StopAll)?;
+        info!(hotkey = %normalize_shortcut(hotkey), "registered stop-all hotkey");
+        eprintln!(
+            "[buddio] registered stop-all={} id=…",
+            normalize_shortcut(hotkey)
+        );
+        Ok(())
+    }
+
+    fn register_action(&self, app: &AppHandle, hotkey: &str, action: HotkeyAction) -> Result<()> {
         let normalized = normalize_shortcut(hotkey);
-        let parsed: HotKey = normalized
-            .parse()
-            .with_context(|| format!("invalid shortcut '{hotkey}' (normalized: '{normalized}')"))?;
+        if is_mouse_accelerator(&normalized) {
+            bail!("mouse accelerators are not supported by global-hotkey: '{normalized}'");
+        }
+
+        let parsed: HotKey = match normalized.parse() {
+            Ok(hk) => hk,
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    hotkey = %normalized,
+                    "hotkey parse failed — skipping registration"
+                );
+                let _ = app.emit(
+                    "hotkey-event",
+                    serde_json::json!({
+                        "type": "unsupported",
+                        "clipId": null,
+                        "hotkey": normalized,
+                        "message": format!(
+                            "Atalho '{normalized}' não é suportado pelo sistema e não foi registrado."
+                        ),
+                    }),
+                );
+                bail!("invalid shortcut '{hotkey}' (normalized: '{normalized}'): {err}");
+            }
+        };
 
         self.unregister_accelerator(app, &normalized).ok();
 
@@ -331,44 +510,8 @@ impl HotkeyManager {
             })
         })?;
 
-        self.actions
-            .lock()
-            .insert(parsed.id(), HotkeyAction::PlayClip(clip_id.to_string()));
-        self.registered
-            .lock()
-            .insert(normalized.clone(), parsed);
-
-        info!(clip_id = %clip_id, hotkey = %normalized, id = parsed.id(), "registered clip hotkey");
-        eprintln!("[buddio] registered clip={clip_id} hotkey={normalized} id={}", parsed.id());
-        Ok(())
-    }
-
-    fn register_stop_all(&self, app: &AppHandle, hotkey: &str) -> Result<()> {
-        let normalized = normalize_shortcut(hotkey);
-        let parsed: HotKey = normalized
-            .parse()
-            .with_context(|| format!("invalid stop-all shortcut '{hotkey}'"))?;
-
-        self.unregister_accelerator(app, &normalized).ok();
-
-        let label = normalized.clone();
-        self.with_os(app, move |os| {
-            os.0.register(parsed).with_context(|| {
-                format!(
-                    "RegisterHotKey failed for stop-all '{label}' (already taken by another app, or OS rejected the key)"
-                )
-            })
-        })?;
-
-        self.actions
-            .lock()
-            .insert(parsed.id(), HotkeyAction::StopAll);
-        self.registered
-            .lock()
-            .insert(normalized.clone(), parsed);
-
-        info!(hotkey = %normalized, id = parsed.id(), "registered stop-all hotkey");
-        eprintln!("[buddio] registered stop-all={normalized} id={}", parsed.id());
+        self.actions.lock().insert(parsed.id(), action);
+        self.registered.lock().insert(normalized, parsed);
         Ok(())
     }
 
@@ -386,13 +529,11 @@ impl HotkeyManager {
             return Ok(());
         };
         self.actions.lock().remove(&parsed.id());
-        self.with_os(app, move |os| {
-            match os.0.unregister(parsed) {
-                Ok(()) => Ok(()),
-                Err(err) => {
-                    debug!(error = %err, "unregister ignored");
-                    Ok(())
-                }
+        self.with_os(app, move |os| match os.0.unregister(parsed) {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                debug!(error = %err, "unregister ignored");
+                Ok(())
             }
         })
     }
@@ -404,6 +545,8 @@ impl HotkeyManager {
         }
         self.registered.lock().clear();
         self.actions.lock().clear();
+        self.index_accelerators.lock().clear();
+        self.index_clip_ids.lock().clear();
         Ok(())
     }
 
@@ -440,6 +583,24 @@ impl HotkeyManager {
     }
 }
 
+fn emit_unsupported_mouse(app: &AppHandle, clip_id: Option<&str>, hotkey: &str) {
+    warn!(hotkey = %hotkey, "mouse hotkey stored but not registered (global-hotkey keyboard-only)");
+    eprintln!(
+        "[buddio] mouse hotkey '{hotkey}' stored but not registered (global-hotkey has no mouse support)"
+    );
+    let _ = app.emit(
+        "hotkey-event",
+        serde_json::json!({
+            "type": "unsupported",
+            "clipId": clip_id,
+            "hotkey": hotkey,
+            "message": format!(
+                "Atalho '{hotkey}' usa botão do mouse — salvo, mas o SO não registra mouse via global-hotkey. Use teclado para atalho global."
+            ),
+        }),
+    );
+}
+
 fn play_clip_by_id(app: &AppHandle, state: &AppState, clip_id: &str) -> Result<()> {
     let clip = state
         .library
@@ -472,6 +633,13 @@ pub fn is_fragile_accelerator(hotkey: &str) -> bool {
     !normalize_shortcut(hotkey).contains('+')
 }
 
+/// Mouse buttons are not supported by `global-hotkey` (keyboard `Code` only).
+pub fn is_mouse_accelerator(hotkey: &str) -> bool {
+    normalize_shortcut(hotkey)
+        .split('+')
+        .any(|part| part.trim().to_ascii_lowercase().starts_with("mouse"))
+}
+
 /// Normalize UI / legacy chords to global-hotkey parseable form.
 pub fn normalize_shortcut(raw: &str) -> String {
     raw.split('+')
@@ -500,6 +668,34 @@ pub fn normalize_shortcut(raw: &str) -> String {
                         }
                     } else if let Some(rest) = other.strip_prefix("digit") {
                         rest.to_string()
+                    } else if let Some(rest) = other.strip_prefix("mouse") {
+                        // Mouse4 / Mouse5 / button3 → Mouse4
+                        let digits: String = rest.chars().filter(|c| c.is_ascii_digit()).collect();
+                        if digits.is_empty() {
+                            t.to_string()
+                        } else {
+                            format!("Mouse{digits}")
+                        }
+                    } else if other.starts_with("numpad") {
+                        // Keep Numpad1 style for global-hotkey parse_key.
+                        let rest = &other["numpad".len()..];
+                        if rest.chars().all(|c| c.is_ascii_digit()) && !rest.is_empty() {
+                            format!("Numpad{rest}")
+                        } else {
+                            // NumpadAdd, etc. — title-case first letter of each camel segment
+                            format!(
+                                "Numpad{}",
+                                {
+                                    let mut chars = rest.chars();
+                                    match chars.next() {
+                                        Some(c) => {
+                                            format!("{}{}", c.to_ascii_uppercase(), chars.as_str())
+                                        }
+                                        None => String::new(),
+                                    }
+                                }
+                            )
+                        }
                     } else {
                         match other {
                             "alt" => "Alt".into(),
@@ -526,7 +722,7 @@ impl Default for HotkeyManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_fragile_accelerator, normalize_shortcut};
+    use super::{is_fragile_accelerator, is_mouse_accelerator, normalize_shortcut};
 
     #[test]
     fn normalizes_modifiers_and_keys() {
@@ -539,6 +735,8 @@ mod tests {
         assert_eq!(normalize_shortcut("KeyQ"), "Q");
         assert_eq!(normalize_shortcut("Digit9"), "9");
         assert_eq!(normalize_shortcut("ArrowUp"), "Up");
+        assert_eq!(normalize_shortcut("Ctrl+Mouse4"), "CommandOrControl+Mouse4");
+        assert_eq!(normalize_shortcut("alt+numpad7"), "Alt+Numpad7");
     }
 
     #[test]
@@ -547,5 +745,12 @@ mod tests {
         assert!(is_fragile_accelerator("Escape"));
         assert!(!is_fragile_accelerator("CommandOrControl+Shift+1"));
         assert!(!is_fragile_accelerator("Ctrl+F12"));
+    }
+
+    #[test]
+    fn detects_mouse_accelerators() {
+        assert!(is_mouse_accelerator("Ctrl+Mouse4"));
+        assert!(is_mouse_accelerator("CommandOrControl+Mouse5"));
+        assert!(!is_mouse_accelerator("CommandOrControl+Alt+1"));
     }
 }

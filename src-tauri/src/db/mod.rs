@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use uuid::Uuid;
 
 #[allow(dead_code)]
-pub const SCHEMA_VERSION: i32 = 2;
+pub const SCHEMA_VERSION: i32 = 3;
 
 const MIGRATION_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS migrations (
@@ -74,6 +74,22 @@ ALTER TABLE clips ADD COLUMN emoji TEXT;
 ALTER TABLE clips ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
 "#;
 
+const MIGRATION_V3: &str = r#"
+ALTER TABLE clips ADD COLUMN integrated_lufs REAL;
+ALTER TABLE clips ADD COLUMN norm_gain_db REAL NOT NULL DEFAULT 0.0;
+
+ALTER TABLE profiles ADD COLUMN mic_route_mode TEXT NOT NULL DEFAULT 'mix';
+ALTER TABLE profiles ADD COLUMN ducking_db REAL NOT NULL DEFAULT -8.0;
+
+CREATE TABLE IF NOT EXISTS watched_folders (
+    id TEXT PRIMARY KEY NOT NULL,
+    path TEXT NOT NULL UNIQUE,
+    collection_id TEXT REFERENCES collections(id) ON DELETE SET NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"#;
+
 /// Open (or create) the SQLite database and apply pending migrations.
 pub fn open_and_migrate(db_path: &std::path::Path) -> Result<Connection> {
     if let Some(parent) = db_path.parent() {
@@ -114,6 +130,11 @@ fn migrate(conn: &Connection) -> Result<()> {
         conn.execute_batch(MIGRATION_V2)?;
         seed_defaults(conn)?;
         conn.execute("INSERT OR IGNORE INTO migrations (version) VALUES (2)", [])?;
+    }
+
+    if current < 3 {
+        conn.execute_batch(MIGRATION_V3)?;
+        conn.execute("INSERT OR IGNORE INTO migrations (version) VALUES (3)", [])?;
     }
 
     Ok(())

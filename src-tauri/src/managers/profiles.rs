@@ -7,7 +7,7 @@ use parking_lot::Mutex;
 use rusqlite::{params, Connection, OptionalExtension};
 use uuid::Uuid;
 
-use crate::models::{ProfileDto, ProfileUpdate};
+use crate::models::{MicRouteModeDto, ProfileDto, ProfileUpdate};
 
 pub struct ProfilesManager {
     conn: Arc<Mutex<Connection>>,
@@ -22,7 +22,7 @@ impl ProfilesManager {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT id, name, monitor_enabled, monitor_device, secondary_device,
-                    master_volume, collection_id, is_default
+                    master_volume, collection_id, is_default, mic_route_mode, ducking_db
              FROM profiles
              ORDER BY is_default DESC, created_at ASC",
         )?;
@@ -38,7 +38,7 @@ impl ProfilesManager {
         let conn = self.conn.lock();
         conn.query_row(
             "SELECT id, name, monitor_enabled, monitor_device, secondary_device,
-                    master_volume, collection_id, is_default
+                    master_volume, collection_id, is_default, mic_route_mode, ducking_db
              FROM profiles WHERE id = ?1",
             [id],
             map_profile_row,
@@ -56,8 +56,8 @@ impl ProfilesManager {
         {
             let conn = self.conn.lock();
             conn.execute(
-                "INSERT INTO profiles (id, name, monitor_enabled, master_volume, is_default)
-                 VALUES (?1, ?2, 1, 1.0, 0)",
+                "INSERT INTO profiles (id, name, monitor_enabled, master_volume, is_default, mic_route_mode, ducking_db)
+                 VALUES (?1, ?2, 1, 1.0, 0, 'mix', -8.0)",
                 params![id, name],
             )?;
         }
@@ -118,6 +118,18 @@ impl ProfilesManager {
                     params![value, id],
                 )?;
             }
+            if let Some(mode) = update.mic_route_mode {
+                conn.execute(
+                    "UPDATE profiles SET mic_route_mode = ?1 WHERE id = ?2",
+                    params![mode.as_str(), id],
+                )?;
+            }
+            if let Some(ducking_db) = update.ducking_db {
+                conn.execute(
+                    "UPDATE profiles SET ducking_db = ?1 WHERE id = ?2",
+                    params![ducking_db.clamp(-24.0, 0.0), id],
+                )?;
+            }
             if let Some(true) = update.is_default {
                 conn.execute("UPDATE profiles SET is_default = 0", [])?;
                 conn.execute(
@@ -175,6 +187,7 @@ fn empty_to_none(value: &str) -> Option<&str> {
 fn map_profile_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProfileDto> {
     let monitor_enabled: i64 = row.get(2)?;
     let is_default: i64 = row.get(7)?;
+    let mode_raw: String = row.get(8).unwrap_or_else(|_| "mix".into());
     Ok(ProfileDto {
         id: row.get(0)?,
         name: row.get(1)?,
@@ -184,5 +197,7 @@ fn map_profile_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProfileDto> {
         master_volume: row.get(5)?,
         collection_id: row.get(6)?,
         is_default: is_default != 0,
+        mic_route_mode: MicRouteModeDto::parse(&mode_raw),
+        ducking_db: row.get::<_, Option<f32>>(9)?.unwrap_or(-8.0),
     })
 }

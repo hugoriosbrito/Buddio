@@ -53,6 +53,21 @@ export function isVirtualDeviceName(name: string): boolean {
   return /virtual|cable|voicemeeter|buddio|vb-?audio/i.test(name);
 }
 
+/** Capture endpoints that feedback if mixed into CABLE Input (Discord's mic). */
+export function isLoopbackCaptureName(name: string): boolean {
+  const n = name.toLowerCase();
+  return (
+    (n.includes("cable") && n.includes("output")) ||
+    n.includes("vb-audio virtual cable") ||
+    n.includes("voicemeeter out") ||
+    n.includes("voicemeeter vaio") ||
+    n.includes("stereo mix") ||
+    n.includes("what u hear") ||
+    n.includes("wave out mix") ||
+    n.includes("loopback")
+  );
+}
+
 export function pickVirtualCandidate(
   devices: Array<{ name: string }>,
   monitorDevice: string | null,
@@ -402,15 +417,17 @@ export function OnboardingModal() {
       }
       try {
         const list = await api.listInputDevices();
-        const mics = list.map((d) => ({
+        const physical = list.filter((d) => !isLoopbackCaptureName(d.name));
+        const mics = physical.map((d) => ({
           value: d.name,
           label: d.isDefault ? `${d.name} (padrão)` : d.name,
         }));
         if (mics.length > 0) {
           setInputDevices(mics);
           const preferred =
-            mics.find((m) => list.some((d) => d.name === m.value && d.isDefault))
-              ?.value ?? mics[0].value;
+            mics.find((m) =>
+              physical.some((d) => d.name === m.value && d.isDefault),
+            )?.value ?? mics[0].value;
           setSelectedMic(preferred);
         }
       } catch {
@@ -471,6 +488,7 @@ export function OnboardingModal() {
       await hydrate();
       setCaptureHint(result.status.captureHint);
       if (result.rebootRequired) {
+        pushToast({ kind: "warning", message: result.message });
         setRepairError(result.message);
         return;
       }
@@ -729,7 +747,24 @@ export function OnboardingModal() {
               selected={selectedMic}
               onSelect={setSelectedMic}
               onBack={() => setScreen("output")}
-              onNext={() => setScreen("virtual")}
+              onNext={() => {
+                void (async () => {
+                  const device =
+                    !selectedMic || selectedMic === "default"
+                      ? null
+                      : selectedMic;
+                  try {
+                    await api.setMicDevice(device);
+                  } catch (err) {
+                    pushToast({
+                      kind: "error",
+                      message: err instanceof Error ? err.message : String(err),
+                    });
+                    return;
+                  }
+                  setScreen("virtual");
+                })();
+              }}
             />
           ) : null}
 
@@ -1186,7 +1221,7 @@ function MicScreen({
       <ThemeStepHeader
         eyebrow="MICROFONE"
         title="Escolha e teste seu microfone"
-        subtitle="O Buddio mistura sua voz com os sons antes de enviá-los ao microfone virtual."
+        subtitle="Use o microfone físico (nunca CABLE Output). O Buddio mistura sua voz com os sons no cabo virtual — CABLE Output é só para o Discord."
         step={2}
       />
 
@@ -1362,6 +1397,7 @@ function VirtualScreen({
         <p className="text-[13px] text-[var(--buddio-text-secondary)]">
           Se o cabo ainda não existir, o Windows pedirá permissão de
           administrador. Pode ser necessário reiniciar depois da instalação.
+          Com a mixagem ligada, sua voz e os sons saem juntos no Discord.
         </p>
         <p className="text-[12px] text-[var(--buddio-text-secondary)]">
           Usa VB-CABLE de{" "}

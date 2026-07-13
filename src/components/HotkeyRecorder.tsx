@@ -72,6 +72,28 @@ function formatChord(e: KeyboardEvent): string | null {
   return parts.join("+");
 }
 
+/**
+ * Mouse buttons via pointerdown.
+ * `button`: 0=left, 1=middle, 2=right, 3=back (Mouse4), 4=forward (Mouse5).
+ * We only accept Mouse3+ (middle/side) so left/right clicks don't fight the UI.
+ *
+ * Note: global-hotkey cannot register mouse — chord is stored; OS registration is skipped.
+ */
+function formatMouseChord(e: PointerEvent): string | null {
+  if (e.pointerType && e.pointerType !== "mouse") return null;
+  // Skip primary/secondary click (UI)
+  if (e.button < 1) return null;
+
+  const parts: string[] = [];
+  if (e.ctrlKey || e.metaKey) parts.push("CommandOrControl");
+  if (e.altKey) parts.push("Alt");
+  if (e.shiftKey) parts.push("Shift");
+  if (parts.length === 0) return null;
+
+  parts.push(`Mouse${e.button + 1}`);
+  return parts.join("+");
+}
+
 export function HotkeyRecorder({ value, onChange, label = "Atalho" }: Props) {
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,6 +140,17 @@ export function HotkeyRecorder({ value, onChange, label = "Atalho" }: Props) {
   useEffect(() => {
     if (!recording) return;
 
+    const commit = async (chord: string) => {
+      if (!armed.current) return;
+      try {
+        await onChange(chord);
+        setError(null);
+        await stopRecording();
+      } catch (err) {
+        setError(String(err));
+      }
+    };
+
     const onKeyDown = async (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
@@ -145,19 +178,34 @@ export function HotkeyRecorder({ value, onChange, label = "Atalho" }: Props) {
       }
 
       const chord = formatChord(e);
-      if (!chord || !armed.current) return;
+      if (!chord) return;
+      await commit(chord);
+    };
 
-      try {
-        await onChange(chord);
-        setError(null);
-        await stopRecording();
-      } catch (err) {
-        setError(String(err));
+    const onPointerDown = async (e: PointerEvent) => {
+      // Ignore left-click on Cancel / modal chrome without modifiers.
+      const chord = formatMouseChord(e);
+      if (!chord) {
+        if (e.button >= 1 && !(e.ctrlKey || e.metaKey || e.altKey || e.shiftKey)) {
+          e.preventDefault();
+          e.stopPropagation();
+          setError(
+            "Use Ctrl/Alt/Shift + botão do mouse (ex.: Ctrl+Mouse4). Mouse sozinho não é capturado.",
+          );
+        }
+        return;
       }
+      e.preventDefault();
+      e.stopPropagation();
+      await commit(chord);
     };
 
     window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+    };
   }, [recording, onChange, stopRecording]);
 
   return (
@@ -183,7 +231,7 @@ export function HotkeyRecorder({ value, onChange, label = "Atalho" }: Props) {
       <Modal
         open={recording}
         title="Capturar atalho"
-        description="Use Ctrl/Alt/Shift + tecla (ex.: Ctrl+Shift+1). Esc limpa o atalho."
+        description="Use Ctrl/Alt/Shift + tecla ou botão do mouse (ex.: Ctrl+Shift+1, Ctrl+Mouse4). Esc limpa."
         onClose={() => void stopRecording()}
         closeOnEsc={false}
       >
@@ -193,7 +241,8 @@ export function HotkeyRecorder({ value, onChange, label = "Atalho" }: Props) {
           </div>
           <p className="text-[14px] font-semibold">Aguardando combinação…</p>
           <p className="max-w-sm text-center text-[12px] text-[var(--buddio-text-secondary)]">
-            Teclas sozinhas como F12 ou Esc não funcionam bem no Windows.
+            Teclas sozinhas como F12 não funcionam bem no Windows. Botões do mouse
+            são salvos, mas o atalho global do SO só registra teclado.
           </p>
           <Button variant="secondary" onClick={() => void stopRecording()}>
             Cancelar

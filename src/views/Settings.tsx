@@ -245,12 +245,46 @@ export function SettingsView() {
               }
             />
           </Field>
+          <Field label="Modo do microfone">
+            <Select
+              aria-label="Modo do microfone"
+              value={settings.micRouteMode}
+              options={[
+                { value: "mix", label: "Misturar voz + sons" },
+                { value: "ducking", label: "Ducking" },
+                { value: "soundOnly", label: "Só som" },
+              ]}
+              onChange={async (next) => {
+                try {
+                  await api.setMicRoute(
+                    next as "mix" | "ducking" | "soundOnly",
+                    settings.duckingDb,
+                  );
+                  await hydrate();
+                } catch (err) {
+                  push({ kind: "error", message: String(err) });
+                }
+              }}
+            />
+          </Field>
           <Toggle
-            label="Mic mix"
-            checked={settings.micMixEnabled}
+            label="Som de ativação de voz (VAD)"
+            checked={settings.vadSoundEnabled}
             onChange={async (enabled) => {
               try {
-                await api.setMicMix(enabled);
+                await api.setVadSound(enabled);
+                await hydrate();
+              } catch (err) {
+                push({ kind: "error", message: String(err) });
+              }
+            }}
+          />
+          <Toggle
+            label="Atalhos por índice (Ctrl+Alt+N)"
+            checked={settings.indexHotkeysEnabled}
+            onChange={async (enabled) => {
+              try {
+                await api.setIndexHotkeysEnabled(enabled);
                 await hydrate();
               } catch (err) {
                 push({ kind: "error", message: String(err) });

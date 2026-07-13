@@ -7,12 +7,14 @@ import type {
   CollectionUpdate,
   DiagnosticsDto,
   ImportResult,
+  MicRouteModeDto,
   OutputDeviceDto,
   OutputDevicesConfig,
   ProfileDto,
   ProfileUpdate,
   VirtualCableEnsureResult,
   VirtualCableStatusDto,
+  WatchedFolderDto,
 } from "./bindings";
 
 export type {
@@ -23,12 +25,14 @@ export type {
   CollectionUpdate,
   DiagnosticsDto,
   ImportResult,
+  MicRouteModeDto,
   OutputDeviceDto,
   OutputDevicesConfig,
   ProfileDto,
   ProfileUpdate,
   VirtualCableEnsureResult,
   VirtualCableStatusDto,
+  WatchedFolderDto,
 };
 
 type Result<T, E> =
@@ -42,6 +46,29 @@ function unwrap<T>(result: Result<T, string>): T {
 
 export async function importClips(paths: string[] | null = null) {
   return unwrap(await commands.importClips(paths));
+}
+
+export async function importFolder(path: string | null = null) {
+  return unwrap(await commands.importFolder(path));
+}
+
+export async function listWatchedFolders() {
+  return unwrap(await commands.listWatchedFolders());
+}
+
+export async function addWatchedFolder(
+  path: string | null = null,
+  collectionId: string | null = null,
+) {
+  return unwrap(await commands.addWatchedFolder(path, collectionId));
+}
+
+export async function removeWatchedFolder(id: string) {
+  unwrap(await commands.removeWatchedFolder(id));
+}
+
+export async function setWatchedFolderEnabled(id: string, enabled: boolean) {
+  return unwrap(await commands.setWatchedFolderEnabled(id, enabled));
 }
 
 export async function listClips() {
@@ -120,6 +147,14 @@ export async function resumeHotkeys() {
   unwrap(await commands.resumeHotkeys());
 }
 
+export async function suggestAutoHotkeys(count: number) {
+  return unwrap(await commands.suggestAutoHotkeys(count));
+}
+
+export async function syncIndexHotkeys(collectionId: string | null = null) {
+  unwrap(await commands.syncIndexHotkeys(collectionId));
+}
+
 export async function listCollections() {
   return unwrap(await commands.listCollections());
 }
@@ -164,6 +199,8 @@ export async function updateProfile(id: string, update: Partial<ProfileUpdate>) 
       masterVolume: update.masterVolume ?? null,
       collectionId: update.collectionId ?? null,
       isDefault: update.isDefault ?? null,
+      micRouteMode: update.micRouteMode ?? null,
+      duckingDb: update.duckingDb ?? null,
     }),
   );
 }
@@ -190,6 +227,29 @@ export async function setOnboardingDone(done: boolean) {
 
 export async function setMicMix(enabled: boolean) {
   unwrap(await commands.setMicMix(enabled));
+}
+
+export async function setMicRoute(
+  mode: MicRouteModeDto,
+  duckingDb: number | null = null,
+) {
+  unwrap(await commands.setMicRoute(mode, duckingDb));
+}
+
+export async function setVadSound(enabled: boolean) {
+  unwrap(await commands.setVadSound(enabled));
+}
+
+export async function setVoiceTargetLufs(lufs: number) {
+  unwrap(await commands.setVoiceTargetLufs(lufs));
+}
+
+export async function setIndexHotkeysEnabled(enabled: boolean) {
+  unwrap(await commands.setIndexHotkeysEnabled(enabled));
+}
+
+export async function setMicDevice(device: string | null) {
+  unwrap(await commands.setMicDevice(device));
 }
 
 export async function setPinnedClips(clipIds: string[]) {

@@ -6,7 +6,7 @@ use anyhow::{bail, Context, Result};
 use parking_lot::Mutex;
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::models::AppSettings;
+use crate::models::{AppSettings, MicRouteModeDto};
 
 const KEY_MASTER_VOLUME: &str = "master_volume";
 const KEY_MONITOR_ENABLED: &str = "monitor_enabled";
@@ -17,6 +17,12 @@ const KEY_THEME: &str = "theme";
 const KEY_ACTIVE_PROFILE: &str = "active_profile_id";
 const KEY_ONBOARDING_DONE: &str = "onboarding_done";
 const KEY_MIC_MIX: &str = "mic_mix_enabled";
+const KEY_MIC_ROUTE: &str = "mic_route_mode";
+const KEY_DUCKING_DB: &str = "ducking_db";
+const KEY_VAD_SOUND: &str = "vad_sound_enabled";
+const KEY_VOICE_TARGET: &str = "voice_target_lufs";
+const KEY_INDEX_HOTKEYS: &str = "index_hotkeys_enabled";
+const KEY_MIC_DEVICE: &str = "mic_device";
 const KEY_PINNED_CLIPS: &str = "pinned_clip_ids";
 const KEY_PENDING_VIRTUAL_SETUP: &str = "pending_virtual_setup";
 
@@ -45,6 +51,29 @@ impl SettingsManager {
     }
 
     pub fn load(&self) -> Result<AppSettings> {
+        let mic_route = self
+            .get(KEY_MIC_ROUTE)?
+            .map(|v| MicRouteModeDto::parse(&v))
+            .unwrap_or_else(|| {
+                // Migrate legacy mic_mix_enabled → mode.
+                let mix_on = self
+                    .get(KEY_MIC_MIX)
+                    .ok()
+                    .flatten()
+                    .map(|v| v != "0" && v != "false")
+                    .unwrap_or(true);
+                if mix_on {
+                    MicRouteModeDto::Mix
+                } else {
+                    MicRouteModeDto::SoundOnly
+                }
+            });
+
+        let ducking_db = self
+            .get(KEY_DUCKING_DB)?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(-8.0);
+
         Ok(AppSettings {
             master_volume: self
                 .get(KEY_MASTER_VOLUME)?
@@ -80,10 +109,22 @@ impl SettingsManager {
                 .get(KEY_ONBOARDING_DONE)?
                 .map(|v| v != "0" && v != "false")
                 .unwrap_or(false),
-            mic_mix_enabled: self
-                .get(KEY_MIC_MIX)?
+            mic_mix_enabled: !matches!(mic_route, MicRouteModeDto::SoundOnly),
+            mic_route_mode: mic_route,
+            ducking_db,
+            vad_sound_enabled: self
+                .get(KEY_VAD_SOUND)?
                 .map(|v| v != "0" && v != "false")
                 .unwrap_or(false),
+            voice_target_lufs: self
+                .get(KEY_VOICE_TARGET)?
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(-16.0),
+            index_hotkeys_enabled: self
+                .get(KEY_INDEX_HOTKEYS)?
+                .map(|v| v != "0" && v != "false")
+                .unwrap_or(false),
+            mic_device: self.get(KEY_MIC_DEVICE)?,
             pinned_clip_ids: self
                 .get(KEY_PINNED_CLIPS)?
                 .and_then(|v| serde_json::from_str(&v).ok())
@@ -118,10 +159,32 @@ impl SettingsManager {
             KEY_ONBOARDING_DONE,
             if settings.onboarding_done { "1" } else { "0" },
         )?;
+        self.set(KEY_MIC_ROUTE, settings.mic_route_mode.as_str())?;
         self.set(
             KEY_MIC_MIX,
             if settings.mic_mix_enabled { "1" } else { "0" },
         )?;
+        self.set(KEY_DUCKING_DB, &settings.ducking_db.to_string())?;
+        self.set(
+            KEY_VAD_SOUND,
+            if settings.vad_sound_enabled { "1" } else { "0" },
+        )?;
+        self.set(
+            KEY_VOICE_TARGET,
+            &settings.voice_target_lufs.to_string(),
+        )?;
+        self.set(
+            KEY_INDEX_HOTKEYS,
+            if settings.index_hotkeys_enabled {
+                "1"
+            } else {
+                "0"
+            },
+        )?;
+        match &settings.mic_device {
+            Some(v) => self.set(KEY_MIC_DEVICE, v)?,
+            None => self.delete(KEY_MIC_DEVICE)?,
+        }
         self.set(
             KEY_PINNED_CLIPS,
             &serde_json::to_string(&settings.pinned_clip_ids)?,
@@ -148,7 +211,47 @@ impl SettingsManager {
     }
 
     pub fn set_mic_mix_enabled(&self, enabled: bool) -> Result<()> {
-        self.set(KEY_MIC_MIX, if enabled { "1" } else { "0" })
+        let mode = if enabled {
+            MicRouteModeDto::Mix
+        } else {
+            MicRouteModeDto::SoundOnly
+        };
+        self.set_mic_route_mode(mode)
+    }
+
+    pub fn set_mic_route_mode(&self, mode: MicRouteModeDto) -> Result<()> {
+        self.set(KEY_MIC_ROUTE, mode.as_str())?;
+        self.set(
+            KEY_MIC_MIX,
+            if matches!(mode, MicRouteModeDto::SoundOnly) {
+                "0"
+            } else {
+                "1"
+            },
+        )
+    }
+
+    pub fn set_ducking_db(&self, db: f32) -> Result<()> {
+        self.set(KEY_DUCKING_DB, &db.clamp(-24.0, 0.0).to_string())
+    }
+
+    pub fn set_vad_sound_enabled(&self, enabled: bool) -> Result<()> {
+        self.set(KEY_VAD_SOUND, if enabled { "1" } else { "0" })
+    }
+
+    pub fn set_voice_target_lufs(&self, lufs: f32) -> Result<()> {
+        self.set(KEY_VOICE_TARGET, &lufs.clamp(-40.0, -6.0).to_string())
+    }
+
+    pub fn set_index_hotkeys_enabled(&self, enabled: bool) -> Result<()> {
+        self.set(KEY_INDEX_HOTKEYS, if enabled { "1" } else { "0" })
+    }
+
+    pub fn set_mic_device(&self, device: Option<&str>) -> Result<()> {
+        match device {
+            Some(v) if !v.is_empty() && v != "default" => self.set(KEY_MIC_DEVICE, v),
+            _ => self.delete(KEY_MIC_DEVICE),
+        }
     }
 
     pub fn set_pinned_clip_ids(&self, ids: &[String]) -> Result<()> {

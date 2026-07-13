@@ -38,7 +38,7 @@ pub fn list_input_devices() -> Result<Vec<InputDeviceInfo>> {
     Ok(out)
 }
 
-fn resolve_input_device(name: Option<&str>) -> Result<cpal::Device> {
+pub fn resolve_input_device(name: Option<&str>) -> Result<cpal::Device> {
     let host = cpal::default_host();
     if let Some(wanted) = name.filter(|n| !n.is_empty() && *n != "default") {
         let devices = host
@@ -55,6 +55,75 @@ fn resolve_input_device(name: Option<&str>) -> Result<cpal::Device> {
     }
     host.default_input_device()
         .ok_or_else(|| AudioError::Device("nenhum microfone padrão encontrado".into()))
+}
+
+/// True for capture endpoints that would create a digital feedback loop when
+/// mixed into VB-CABLE Input (e.g. "CABLE Output", Stereo Mix).
+pub fn is_loopback_capture_name(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    (n.contains("cable") && n.contains("output"))
+        || n.contains("vb-audio virtual cable")
+        || n.contains("voicemeeter out")
+        || n.contains("voicemeeter vaio")
+        || n.contains("voicemeeter aux")
+        || n.contains("stereo mix")
+        || n.contains("what u hear")
+        || n.contains("wave out mix")
+        || n.contains("loopback")
+}
+
+/// Resolve a **physical** mic for mic→CABLE mix. Never opens CABLE Output /
+/// Stereo Mix / similar — that feeds Discord's listen path back into itself
+/// and produces a maxed-out roar.
+pub fn resolve_input_device_for_mic_mix(name: Option<&str>) -> Result<cpal::Device> {
+    let host = cpal::default_host();
+    let devices: Vec<cpal::Device> = host
+        .input_devices()
+        .map_err(|e| AudioError::Device(e.to_string()))?
+        .collect();
+
+    if let Some(wanted) = name.filter(|n| !n.is_empty() && *n != "default") {
+        if is_loopback_capture_name(wanted) {
+            return Err(AudioError::Device(
+                "não use CABLE Output (nem Stereo Mix) como microfone do Buddio — isso causa feedback no Discord"
+                    .into(),
+            ));
+        }
+        for device in &devices {
+            if device.name().ok().as_deref() == Some(wanted) {
+                return Ok(device.clone());
+            }
+        }
+        return Err(AudioError::Device(format!(
+            "dispositivo de entrada não encontrado: {wanted}"
+        )));
+    }
+
+    if let Some(default) = host.default_input_device() {
+        if let Ok(n) = default.name() {
+            if !is_loopback_capture_name(&n) {
+                return Ok(default);
+            }
+            tracing::warn!(
+                device = %n,
+                "default input is a virtual/loopback capture — picking a physical mic for mic mix"
+            );
+        }
+    }
+
+    for device in devices {
+        if let Ok(n) = device.name() {
+            if !is_loopback_capture_name(&n) {
+                tracing::info!(device = %n, "mic mix using physical input");
+                return Ok(device);
+            }
+        }
+    }
+
+    Err(AudioError::Device(
+        "nenhum microfone físico encontrado (só CABLE Output / loopback). Escolha seu mic real no Buddio"
+            .into(),
+    ))
 }
 
 struct MeterInner {
@@ -213,4 +282,19 @@ fn store_peak(meter: &MeterInner, peak: f32) {
     let prev = f32::from_bits(meter.level_bits.load(Ordering::Relaxed));
     let next = (prev * 0.72).max(peak.min(1.0));
     meter.level_bits.store(next.to_bits(), Ordering::Relaxed);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_cable_output_as_loopback() {
+        assert!(is_loopback_capture_name(
+            "CABLE Output (VB-Audio Virtual Cable)"
+        ));
+        assert!(is_loopback_capture_name("Stereo Mix (Realtek)"));
+        assert!(!is_loopback_capture_name("Microphone (Realtek(R) Audio)"));
+        assert!(!is_loopback_capture_name("Headset Microphone"));
+    }
 }

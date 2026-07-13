@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AppSettings, OutputDeviceDto } from "../lib/api";
+import type { AppSettings, MicRouteModeDto, OutputDeviceDto } from "../lib/api";
 import * as api from "../lib/api";
 
 type SettingsState = {
@@ -14,6 +14,10 @@ type SettingsState = {
     secondary: string | null,
   ) => Promise<void>;
   setStopAllHotkey: (hotkey: string | null) => Promise<void>;
+  setMicRoute: (
+    mode: MicRouteModeDto,
+    duckingDb?: number | null,
+  ) => Promise<void>;
 };
 
 const defaults: AppSettings = {
@@ -25,7 +29,13 @@ const defaults: AppSettings = {
   theme: "light",
   activeProfileId: null,
   onboardingDone: false,
-  micMixEnabled: false,
+  micMixEnabled: true,
+  micRouteMode: "mix",
+  duckingDb: -8,
+  vadSoundEnabled: false,
+  voiceTargetLufs: -16,
+  indexHotkeysEnabled: false,
+  micDevice: null,
   pinnedClipIds: [],
 };
 
@@ -85,6 +95,24 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       await api.setStopAllHotkey(hotkey);
       set((s) => ({
         settings: { ...s.settings, stopAllHotkey: hotkey },
+        error: null,
+      }));
+    } catch (err) {
+      set({ error: String(err) });
+      throw err;
+    }
+  },
+
+  setMicRoute: async (mode, duckingDb = null) => {
+    try {
+      await api.setMicRoute(mode, duckingDb);
+      set((s) => ({
+        settings: {
+          ...s.settings,
+          micRouteMode: mode,
+          duckingDb: duckingDb ?? s.settings.duckingDb,
+          micMixEnabled: mode !== "soundOnly",
+        },
         error: null,
       }));
     } catch (err) {

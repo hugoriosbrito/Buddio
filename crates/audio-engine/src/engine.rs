@@ -4,6 +4,7 @@
 //! audio callback. All decoding happens on this command thread via [`crate::decode`].
 
 use std::collections::HashMap;
+use std::f32::consts::TAU;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,19 +13,23 @@ use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use rodio::{OutputStream, OutputStreamHandle, Sink};
 use tracing::{debug, warn};
 
-use crate::cache::{ClipCache, DecodedClip};
+use crate::cache::{fingerprint_path, ClipCache, DecodedClip};
 use crate::command::AudioCommand;
 use crate::decode;
 use crate::device::resolve_output_device;
 use crate::event::AudioEvent;
+use crate::mic_mix::{self, MicCapture, SharedMicGain};
+use crate::mic_route::MicRouteMode;
 use crate::source::CachedSource;
-use crate::volume::{clamp_gain, effective_gain};
+use crate::volume::{clamp_gain, db_to_linear, effective_gain};
 
 /// One open output path (monitor or secondary).
 struct OutputPath {
     /// Kept alive so the cpal stream does not tear down.
     _stream: OutputStream,
     handle: OutputStreamHandle,
+    sample_rate: u32,
+    channels: u16,
 }
 
 /// Active dual-sink playback for a single `clip_id`.
@@ -78,6 +83,18 @@ struct EngineState {
     /// Desired monitor device name; `None` = system default (when enabled).
     monitor_name: Option<String>,
     playing: HashMap<String, ActivePlayback>,
+    /// Exclusive mic routing on secondary.
+    mic_route_mode: MicRouteMode,
+    ducking_db: f32,
+    mic_input_name: Option<String>,
+    /// Whether mic capture should run at all (false only when mode is unused
+    /// without secondary — capture always runs when secondary is open and mode
+    /// needs voice).
+    mic_capture: Option<MicCapture>,
+    /// Persistent sink on secondary carrying live mic PCM.
+    mic_sink: Option<Sink>,
+    mic_gain: SharedMicGain,
+    vad_sound_enabled: bool,
 }
 
 impl EngineState {
@@ -93,6 +110,13 @@ impl EngineState {
             secondary_name: None,
             monitor_name: None,
             playing: HashMap::new(),
+            mic_route_mode: MicRouteMode::Mix,
+            ducking_db: -8.0,
+            mic_input_name: None,
+            mic_capture: None,
+            mic_sink: None,
+            mic_gain: SharedMicGain::new(mic_mix::DEFAULT_MIC_MIX_GAIN),
+            vad_sound_enabled: false,
         };
         state.open_monitor(None);
         state
@@ -101,6 +125,10 @@ impl EngineState {
     fn emit(&self, event: AudioEvent) {
         // Non-blocking: drop if the host is not draining events.
         let _ = self.event_tx.try_send(event);
+    }
+
+    fn active_playback_count(&self) -> usize {
+        self.playing.len()
     }
 
     fn close_monitor(&mut self) {
@@ -144,6 +172,7 @@ impl EngineState {
     }
 
     fn open_secondary(&mut self, name: Option<String>) {
+        self.stop_mic_mix_io();
         self.secondary_name = name.clone();
         match name {
             None => {
@@ -152,6 +181,7 @@ impl EngineState {
             Some(ref n) => match open_output_path(Some(n)) {
                 Ok(path) => {
                     self.secondary = Some(path);
+                    self.sync_mic_mix();
                 }
                 Err(msg) => {
                     self.secondary = None;
@@ -159,6 +189,116 @@ impl EngineState {
                 }
             },
         }
+    }
+
+    fn stop_mic_mix_io(&mut self) {
+        if let Some(sink) = self.mic_sink.take() {
+            sink.stop();
+        }
+        if let Some(capture) = self.mic_capture.take() {
+            capture.stop();
+        }
+    }
+
+    /// Desired base mic gain when no clip is playing (or mix mode).
+    fn resting_mic_gain(&self) -> f32 {
+        match self.mic_route_mode {
+            MicRouteMode::Mix | MicRouteMode::Ducking | MicRouteMode::SoundOnly => {
+                mic_mix::DEFAULT_MIC_MIX_GAIN
+            }
+        }
+    }
+
+    /// Apply ducking / block-voice gain based on active playback.
+    fn refresh_mic_gain_for_playback(&self) {
+        let playing = self.active_playback_count() > 0;
+        let gain = match self.mic_route_mode {
+            MicRouteMode::Mix => self.resting_mic_gain(),
+            MicRouteMode::Ducking => {
+                if playing {
+                    self.resting_mic_gain() * db_to_linear(self.ducking_db)
+                } else {
+                    self.resting_mic_gain()
+                }
+            }
+            MicRouteMode::SoundOnly => {
+                if playing {
+                    0.0
+                } else {
+                    self.resting_mic_gain()
+                }
+            }
+        };
+        self.mic_gain.set(gain);
+    }
+
+    /// Start/stop mic capture + secondary mic sink according to flags.
+    fn sync_mic_mix(&mut self) {
+        self.stop_mic_mix_io();
+        // All three modes need mic on CABLE when idle (so Discord hears voice).
+        // sound_only/ducking only mute/attenuate during playback.
+        let Some(secondary) = self.secondary.as_ref() else {
+            return;
+        };
+        self.mic_gain.set(self.resting_mic_gain());
+        match MicCapture::start(self.mic_input_name.clone()) {
+            Ok(capture) => {
+                let ring = capture.ring();
+                let in_rate = capture.in_rate;
+                let sink = mic_mix::start_mic_sink(
+                    &secondary.handle,
+                    ring,
+                    secondary.channels,
+                    secondary.sample_rate,
+                    in_rate,
+                    self.mic_gain.clone(),
+                );
+                if sink.is_none() {
+                    warn!("failed to attach mic mix sink on secondary");
+                    capture.stop();
+                    self.emit(AudioEvent::DeviceWarning {
+                        message: "não foi possível misturar o microfone na saída virtual".into(),
+                    });
+                    return;
+                }
+                self.mic_capture = Some(capture);
+                self.mic_sink = sink;
+                self.refresh_mic_gain_for_playback();
+                debug!(
+                    in_rate,
+                    out_rate = secondary.sample_rate,
+                    mode = ?self.mic_route_mode,
+                    "mic route active on secondary"
+                );
+            }
+            Err(err) => {
+                warn!(error = %err, "mic mix capture failed");
+                self.emit(AudioEvent::DeviceWarning {
+                    message: format!("microfone para mix: {err}"),
+                });
+            }
+        }
+    }
+
+    fn set_mic_mix(&mut self, enabled: bool, input_device: Option<String>) {
+        // Legacy: enabled=true → Mix, enabled=false → SoundOnly always muted voice path off.
+        self.mic_route_mode = if enabled {
+            MicRouteMode::Mix
+        } else {
+            // Disable mic capture entirely (pre-route-mode behavior).
+            self.mic_input_name = input_device;
+            self.stop_mic_mix_io();
+            return;
+        };
+        self.mic_input_name = input_device;
+        self.sync_mic_mix();
+    }
+
+    fn set_mic_route(&mut self, mode: MicRouteMode, ducking_db: f32, input_device: Option<String>) {
+        self.mic_route_mode = mode;
+        self.ducking_db = ducking_db.clamp(-24.0, 0.0);
+        self.mic_input_name = input_device;
+        self.sync_mic_mix();
     }
 
     /// If a sink/stream is dead, reopen on the configured (or default) device.
@@ -184,6 +324,7 @@ impl EngineState {
                 fade_in_secs,
                 fade_out_secs,
                 gain_linear,
+                play_vad_preamble,
             } => self.play(
                 clip_id,
                 volume,
@@ -193,6 +334,7 @@ impl EngineState {
                 fade_in_secs,
                 fade_out_secs,
                 gain_linear,
+                play_vad_preamble,
             ),
             AudioCommand::Stop { clip_id } => self.stop_clip(&clip_id, true),
             AudioCommand::StopAll => self.stop_all(),
@@ -215,6 +357,18 @@ impl EngineState {
                 }
                 self.open_secondary(secondary);
             }
+            AudioCommand::SetMicMix {
+                enabled,
+                input_device,
+            } => self.set_mic_mix(enabled, input_device),
+            AudioCommand::SetMicRoute {
+                mode,
+                ducking_db,
+                input_device,
+            } => self.set_mic_route(mode, ducking_db, input_device),
+            AudioCommand::SetVadSound { enabled } => {
+                self.vad_sound_enabled = enabled;
+            }
         }
     }
 
@@ -226,6 +380,13 @@ impl EngineState {
 
     fn load_clip(&mut self, clip_id: String, path: PathBuf) {
         self.clip_paths.insert(clip_id.clone(), path.clone());
+        // Hotkey path always sends LoadClip+Play; skip re-decode when already cached
+        // for the same file (avoids symphonia WARN spam and latency on every press).
+        if let Some(existing) = self.cache.get(&clip_id) {
+            if existing.fingerprint == fingerprint_path(&path) {
+                return;
+            }
+        }
         match decode::decode_file(&path) {
             Ok(clip) => {
                 debug!(%clip_id, frames = clip.frame_count(), "clip loaded into hot cache");
@@ -266,6 +427,56 @@ impl EngineState {
         }
     }
 
+    fn play_vad_beep(&mut self) {
+        let Some(secondary) = self.secondary.as_ref() else {
+            return;
+        };
+        let rate = secondary.sample_rate.max(8_000);
+        let channels = secondary.channels.max(1);
+        let duration_secs = 0.08f32;
+        let freq = 1000.0f32;
+        let n_frames = (rate as f32 * duration_secs) as usize;
+        let mut pcm = Vec::with_capacity(n_frames * channels as usize);
+        for i in 0..n_frames {
+            let t = i as f32 / rate as f32;
+            // Soft envelope to avoid clicks.
+            let env = if t < 0.01 {
+                t / 0.01
+            } else if t > duration_secs - 0.01 {
+                (duration_secs - t) / 0.01
+            } else {
+                1.0
+            };
+            let s = (TAU * freq * t).sin() * 0.35 * env;
+            for _ in 0..channels {
+                pcm.push(s);
+            }
+        }
+        let clip = DecodedClip::from_pcm(pcm, rate, channels);
+        if let Some(sink) = try_start_sink(
+            &secondary.handle,
+            &clip,
+            false,
+            1.0,
+            0.0,
+            None,
+            None,
+            None,
+        ) {
+            // Fire-and-forget: keep sink alive until empty via a short sleep is
+            // avoided — attach under a reserved id that poll_finished cleans up.
+            self.playing.insert(
+                "__vad__".into(),
+                ActivePlayback {
+                    clip_id: "__vad__".into(),
+                    clip_volume: 1.0,
+                    monitor: None,
+                    secondary: Some(sink),
+                },
+            );
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn play(
         &mut self,
@@ -277,10 +488,8 @@ impl EngineState {
         fade_in_secs: Option<f32>,
         fade_out_secs: Option<f32>,
         gain_linear: Option<f32>,
+        play_vad_preamble: bool,
     ) {
-        // TODO: apply fade_in_secs / fade_out_secs envelope in CachedSource.
-        let _ = (fade_in_secs, fade_out_secs);
-
         // Restart if already playing.
         self.stop_clip(&clip_id, false);
 
@@ -292,6 +501,13 @@ impl EngineState {
         };
 
         self.ensure_outputs_alive();
+
+        if play_vad_preamble && self.vad_sound_enabled {
+            // Stop previous vad if still draining.
+            self.stop_clip("__vad__", false);
+            self.play_vad_beep();
+        }
+
         let clip_volume = volume.max(0.0) * gain_linear.unwrap_or(1.0).max(0.0);
         let gain = clamp_gain(effective_gain(self.master_volume, clip_volume));
         let trim_start = trim_start_secs.unwrap_or(0.0).max(0.0);
@@ -304,6 +520,8 @@ impl EngineState {
                 gain,
                 trim_start,
                 trim_end_secs,
+                fade_in_secs,
+                fade_out_secs,
             )
         });
 
@@ -322,6 +540,8 @@ impl EngineState {
                         gain,
                         trim_start,
                         trim_end_secs,
+                        fade_in_secs,
+                        fade_out_secs,
                     )
                 })
             } else {
@@ -336,6 +556,8 @@ impl EngineState {
                 gain,
                 trim_start,
                 trim_end_secs,
+                fade_in_secs,
+                fade_out_secs,
             )
         });
 
@@ -355,17 +577,19 @@ impl EngineState {
                 secondary: secondary_sink,
             },
         );
+        self.refresh_mic_gain_for_playback();
         self.emit(AudioEvent::PlaybackStarted { clip_id });
     }
 
     fn stop_clip(&mut self, clip_id: &str, emit_stopped: bool) {
         if let Some(pb) = self.playing.remove(clip_id) {
             pb.stop();
-            if emit_stopped {
+            if emit_stopped && clip_id != "__vad__" {
                 self.emit(AudioEvent::PlaybackStopped {
                     clip_id: clip_id.to_string(),
                 });
             }
+            self.refresh_mic_gain_for_playback();
         }
     }
 
@@ -384,28 +608,42 @@ impl EngineState {
             .map(|(id, _)| id.clone())
             .collect();
 
-        for id in finished {
-            if let Some(pb) = self.playing.remove(&id) {
+        for id in finished.iter() {
+            if let Some(pb) = self.playing.remove(id) {
                 // Ensure sinks are dropped/stopped.
                 pb.stop();
-                self.emit(AudioEvent::PlaybackStopped {
-                    clip_id: pb.clip_id,
-                });
+                if id.as_str() != "__vad__" {
+                    self.emit(AudioEvent::PlaybackStopped {
+                        clip_id: pb.clip_id,
+                    });
+                }
             }
+        }
+        if !finished.is_empty() {
+            self.refresh_mic_gain_for_playback();
         }
     }
 }
 
 fn open_output_path(name: Option<&str>) -> Result<OutputPath, String> {
+    use cpal::traits::DeviceTrait;
+
     let device = resolve_output_device(name).map_err(|e| e.to_string())?;
+    let (sample_rate, channels) = device
+        .default_output_config()
+        .map(|c| (c.sample_rate().0, c.channels()))
+        .unwrap_or((48_000, 2));
     let (stream, handle) =
         OutputStream::try_from_device(&device).map_err(|e| format!("open stream: {e}"))?;
     Ok(OutputPath {
         _stream: stream,
         handle,
+        sample_rate,
+        channels,
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn try_start_sink(
     handle: &OutputStreamHandle,
     clip: &DecodedClip,
@@ -413,12 +651,20 @@ fn try_start_sink(
     gain: f32,
     trim_start_secs: f32,
     trim_end_secs: Option<f32>,
+    fade_in_secs: Option<f32>,
+    fade_out_secs: Option<f32>,
 ) -> Option<Sink> {
     let sink = Sink::try_new(handle).ok()?;
     // Volume lives on the Sink so SetMasterVolume can update live playback.
     sink.set_volume(gain);
-    let source =
-        CachedSource::from_clip_region(clip, loop_enabled, trim_start_secs, trim_end_secs);
+    let source = CachedSource::from_clip_region(
+        clip,
+        loop_enabled,
+        trim_start_secs,
+        trim_end_secs,
+        fade_in_secs,
+        fade_out_secs,
+    );
     sink.append(source);
     sink.play();
     Some(sink)

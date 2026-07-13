@@ -2,9 +2,9 @@
  * Atualize quando o remoto oficial estiver definido (README ainda usa placeholder). */
 export const BUDDIO_GITHUB_REPO =
   (import.meta.env.VITE_BUDDIO_GITHUB_REPO as string | undefined)?.trim() ||
-  "BuddioApp/buddio";
+  "hugoriosbrito/Buddio";
 
-export const APP_VERSION = "0.1.0";
+export const APP_VERSION = "1.0.0";
 
 export type UpdateCheckResult =
   | { status: "up_to_date"; current: string; latest: string }

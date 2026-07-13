@@ -10,6 +10,7 @@ import { Titlebar } from "./components/layout/Titlebar";
 import { ToastViewport } from "./components/ui/Toast";
 import { MiniApp } from "./mini/MiniApp";
 import { installNativeShellGuards } from "./lib/nativeShell";
+import * as api from "./lib/api";
 import { useCollectionsStore } from "./stores/collectionsStore";
 import { useLibraryStore } from "./stores/libraryStore";
 import { usePlaybackStore } from "./stores/playbackStore";
@@ -26,6 +27,7 @@ import { SoundboardView } from "./views/Soundboard";
 function MainApp() {
   const view = useUiStore((s) => s.view);
   const hydrateTheme = useUiStore((s) => s.hydrateTheme);
+  const applyLaunchPreferences = useUiStore((s) => s.applyLaunchPreferences);
   const setThemeMode = useUiStore((s) => s.setThemeMode);
   const setCommandPaletteOpen = useUiStore((s) => s.setCommandPaletteOpen);
   const setOnboardingOpen = useUiStore((s) => s.setOnboardingOpen);
@@ -49,12 +51,18 @@ function MainApp() {
       }
       if (!settings.onboardingDone) {
         setOnboardingOpen(true);
+      } else {
+        await applyLaunchPreferences();
       }
       await Promise.all([
         hydrateLibrary(),
         hydrateCollections(),
         hydrateProfiles(),
       ]);
+      const collectionId = useUiStore.getState().selectedCollectionId;
+      void api.syncIndexHotkeys(collectionId).catch(() => {
+        /* ignore */
+      });
     })();
 
     const unlistens: Array<() => void> = [];
@@ -90,12 +98,32 @@ function MainApp() {
       const type = String(event.payload.type ?? "").toLowerCase();
       const message = event.payload.message;
       if (
-        (type === "registerfailed" || type === "clearedfragile") &&
+        (type === "registerfailed" ||
+          type === "clearedfragile" ||
+          type === "unsupported") &&
         message
       ) {
         pushToast({ kind: "warning", message, sticky: true });
         setNotice(message);
-        void hydrateLibrary();
+        if (type !== "unsupported") {
+          void hydrateLibrary();
+        }
+      }
+    }).then((fn) => {
+      unlistens.push(fn);
+    });
+
+    void listen<{ imported?: number }>("library-updated", (event) => {
+      void hydrateLibrary();
+      const n = event.payload.imported ?? 0;
+      if (n > 0) {
+        pushToast({
+          kind: "success",
+          message:
+            n === 1
+              ? "1 áudio importado de pasta monitorada"
+              : `${n} áudios importados de pastas monitoradas`,
+        });
       }
     }).then((fn) => {
       unlistens.push(fn);
@@ -115,6 +143,7 @@ function MainApp() {
       window.removeEventListener("keydown", onKey);
     };
   }, [
+    applyLaunchPreferences,
     hydrateCollections,
     hydrateLibrary,
     hydrateProfiles,
@@ -128,6 +157,18 @@ function MainApp() {
     setOnboardingOpen,
     setThemeMode,
   ]);
+
+  const selectedCollectionId = useUiStore((s) => s.selectedCollectionId);
+  const indexHotkeysEnabled = useSettingsStore(
+    (s) => s.settings.indexHotkeysEnabled,
+  );
+
+  useEffect(() => {
+    if (!indexHotkeysEnabled) return;
+    void api.syncIndexHotkeys(selectedCollectionId).catch(() => {
+      /* ignore when not in tauri */
+    });
+  }, [selectedCollectionId, indexHotkeysEnabled]);
 
   const onboardingOpen = useUiStore((s) => s.onboardingOpen);
   const showInspector = view === "soundboard" || view === "library";

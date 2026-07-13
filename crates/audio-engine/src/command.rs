@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::mic_route::MicRouteMode;
+
 /// Non-blocking commands processed by the engine thread.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
@@ -13,7 +15,8 @@ pub enum AudioCommand {
     /// Optional editor params are applied at play time (non-destructive):
     /// - `trim_*` seek / early-stop within the cached PCM
     /// - `gain_linear` multiplies clip volume (typically `10^(gain_db/20)`)
-    /// - `fade_*` are accepted for forward-compat; fade envelope is TODO in the engine
+    /// - `fade_*` apply a linear amplitude envelope in [`CachedSource`]
+    /// - `play_vad_preamble` plays a short beep on secondary before the clip
     Play {
         clip_id: String,
         volume: f32,
@@ -28,6 +31,8 @@ pub enum AudioCommand {
         fade_out_secs: Option<f32>,
         #[serde(default)]
         gain_linear: Option<f32>,
+        #[serde(default)]
+        play_vad_preamble: bool,
     },
     /// Stop a single active clip.
     Stop { clip_id: String },
@@ -46,6 +51,23 @@ pub enum AudioCommand {
         monitor: Option<String>,
         secondary: Option<String>,
     },
+    /// Mix the physical microphone into the secondary (call) output only.
+    ///
+    /// Prefer [`AudioCommand::SetMicRoute`]. Kept for compatibility.
+    SetMicMix {
+        enabled: bool,
+        /// `None` = system default input.
+        input_device: Option<String>,
+    },
+    /// Exclusive mic routing mode on the secondary path.
+    SetMicRoute {
+        mode: MicRouteMode,
+        /// Attenuation applied to voice while a clip plays (ducking mode). Negative dB.
+        ducking_db: f32,
+        input_device: Option<String>,
+    },
+    /// Enable/disable voice-activation preamble beep before clips.
+    SetVadSound { enabled: bool },
     /// Decode a file into the hot PCM cache.
     LoadClip { clip_id: String, path: PathBuf },
     /// Remove a clip from the hot cache (also stops it if playing).

@@ -1,17 +1,20 @@
 {
   "name": "buddio",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri",
+    "tauri": "node ./scripts/with-cargo.mjs",
+    "dev:app": "node ./scripts/with-cargo.mjs dev",
     "gen:bindings": "bun run scripts/gen-bindings.ts",
+    "fetch:vbcable": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/fetch-vbcable.ps1",
+    "build:installer": "bun run fetch:vbcable && node ./scripts/with-cargo.mjs build --bundles nsis",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e:build": "bun run build && tauri build --debug --no-bundle",
+    "e2e:build": "bun run build && node ./scripts/with-cargo.mjs build --debug --no-bundle",
     "e2e": "wdio run e2e/wdio.conf.mjs",
     "e2e:routeerror": "wdio run e2e/wdio.routeerror.conf.mjs",
     "e2e:all": "bun run e2e && bun run e2e:routeerror"
@@ -19,6 +22,7 @@
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-global-shortcut": "^2.3.2",
     "@tauri-apps/plugin-log": "^2.8.0",
