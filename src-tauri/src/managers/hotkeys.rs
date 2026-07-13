@@ -7,12 +7,16 @@
 //!
 //! ## Limitations
 //!
-//! - **Mouse chords** (`Ctrl+Mouse4`, …): captured and stored in the UI/DB, but
-//!   `global-hotkey` 0.8 only supports keyboard `Code`s. Registration is skipped with a
-//!   warning toast (`hotkey-event` / `unsupported`).
-//! - **Alt+NN multi-digit** (e.g. `Alt+17`): not feasible — the crate registers a single
-//!   key + modifiers. We register `Alt+Numpad1`..`Alt+Numpad9` / `Alt+Numpad0` for
-//!   positions 1–10 instead.
+//! - **Mouse chords** (`Ctrl+Mouse4`, …): `global-hotkey` 0.8 only supports keyboard
+//!   `Code`s, so these are *not* registered via `RegisterHotKey`. Instead
+//!   [`HotkeyManager::init_mouse_listener`] runs a dedicated `rdev` raw-input thread
+//!   that tracks modifier state and matches `ButtonPress` events against
+//!   `mouse_bindings` directly.
+//! - **Alt+NN multi-digit** (e.g. `Alt+17`): not feasible as a single global hotkey —
+//!   both `global-hotkey` and `rdev` fire per key/button press, and there's no clean
+//!   way to buffer a two-digit sequence without a timing window that fights normal
+//!   typing. We register `Alt+Numpad1`..`Alt+Numpad9` / `Alt+Numpad0` for positions
+//!   1–10 instead.
 //! - **Bare F1–F12**: fragile on Windows (see [`is_fragile_accelerator`]).
 
 use std::collections::HashMap;
@@ -60,6 +64,11 @@ pub struct HotkeyManager {
     index_collection_id: Mutex<Option<String>>,
     /// Accelerators owned by index / numpad bindings (subset of `registered`).
     index_accelerators: Mutex<Vec<String>>,
+    /// normalized mouse chord (e.g. "CommandOrControl+Mouse4") → action.
+    /// `global-hotkey` (Win32 RegisterHotKey) cannot register mouse buttons, so
+    /// these are matched from raw input by [`Self::init_mouse_listener`] instead.
+    mouse_bindings: Arc<Mutex<HashMap<String, HotkeyAction>>>,
+    mouse_listener_started: Mutex<bool>,
     os: Arc<Mutex<Option<HotkeyOs>>>,
     main_thread_id: Mutex<ThreadId>,
 }
@@ -75,6 +84,8 @@ impl HotkeyManager {
             index_clip_ids: Arc::new(Mutex::new(Vec::new())),
             index_collection_id: Mutex::new(None),
             index_accelerators: Mutex::new(Vec::new()),
+            mouse_bindings: Arc::new(Mutex::new(HashMap::new())),
+            mouse_listener_started: Mutex::new(false),
             os: Arc::new(Mutex::new(None)),
             main_thread_id: Mutex::new(std::thread::current().id()),
         }
@@ -100,46 +111,83 @@ impl HotkeyManager {
                 eprintln!("[buddio] hotkey id={} pressed but no action mapped", event.id);
                 return;
             };
-            match action {
-                HotkeyAction::PlayClip(clip_id) => {
-                    eprintln!("[buddio] HOTKEY FIRED clip={clip_id}");
-                    info!(clip_id = %clip_id, "global hotkey pressed");
-                    let state = app_handle.state::<AppState>();
-                    if let Err(err) = play_clip_by_id(&app_handle, &state, &clip_id) {
-                        warn!(error = %err, "hotkey play failed");
-                        eprintln!("[buddio] HOTKEY PLAY FAILED clip={clip_id}: {err:#}");
-                    }
-                }
-                HotkeyAction::PlayIndex(index) => {
-                    let clip_id = index_clip_ids.lock().get(index).cloned();
-                    let Some(clip_id) = clip_id else {
-                        eprintln!("[buddio] index hotkey {index} — no clip at position");
-                        return;
-                    };
-                    eprintln!("[buddio] HOTKEY FIRED index={index} clip={clip_id}");
-                    info!(index, clip_id = %clip_id, "index hotkey pressed");
-                    let state = app_handle.state::<AppState>();
-                    if let Err(err) = play_clip_by_id(&app_handle, &state, &clip_id) {
-                        warn!(error = %err, "index hotkey play failed");
-                    }
-                }
-                HotkeyAction::StopAll => {
-                    eprintln!("[buddio] STOP-ALL hotkey fired");
-                    let state = app_handle.state::<AppState>();
-                    let _ = state.audio.send(audio_engine::AudioCommand::StopAll);
-                    let _ = app_handle.emit(
-                        "playback-event",
-                        crate::models::PlaybackEventPayload::Stopped {
-                            clip_id: "*".into(),
-                        },
-                    );
-                }
-            }
+            dispatch_action(&app_handle, &action, &index_clip_ids);
         }));
 
         info!("hotkey OS manager ready");
         eprintln!("[buddio] hotkey OS manager ready");
         Ok(())
+    }
+
+    /// Start the global mouse listener (`Ctrl/Alt/Shift+MouseN` chords).
+    ///
+    /// `global-hotkey` only registers keyboard `Code`s via Win32 `RegisterHotKey`,
+    /// so mouse chords are matched here from a raw `rdev` input hook instead — this
+    /// runs on its own OS thread and does not need the Win32 HWND `init_os` owns.
+    /// Idempotent: safe to call multiple times, only the first call spawns a thread.
+    pub fn init_mouse_listener(&self, app: &AppHandle) {
+        {
+            let mut started = self.mouse_listener_started.lock();
+            if *started {
+                return;
+            }
+            *started = true;
+        }
+
+        let mouse_bindings = self.mouse_bindings.clone();
+        let index_clip_ids = self.index_clip_ids.clone();
+        let app_handle = app.clone();
+
+        std::thread::spawn(move || {
+            let mut ctrl = false;
+            let mut alt = false;
+            let mut shift = false;
+            let mut meta = false;
+
+            let result = rdev::listen(move |event| match event.event_type {
+                rdev::EventType::KeyPress(key) => {
+                    set_modifier(key, true, &mut ctrl, &mut alt, &mut shift, &mut meta);
+                }
+                rdev::EventType::KeyRelease(key) => {
+                    set_modifier(key, false, &mut ctrl, &mut alt, &mut shift, &mut meta);
+                }
+                rdev::EventType::ButtonPress(button) => {
+                    let Some(n) = mouse_button_number(button) else {
+                        return;
+                    };
+                    if !(ctrl || meta || alt || shift) {
+                        // Mirrors the capture UI: a bare mouse button is never bound.
+                        return;
+                    }
+                    let mut parts: Vec<&str> = Vec::with_capacity(3);
+                    if ctrl || meta {
+                        parts.push("CommandOrControl");
+                    }
+                    if alt {
+                        parts.push("Alt");
+                    }
+                    if shift {
+                        parts.push("Shift");
+                    }
+                    let chord = format!("{}+Mouse{n}", parts.join("+"));
+                    let action = mouse_bindings.lock().get(&chord).cloned();
+                    if let Some(action) = action {
+                        eprintln!("[buddio] MOUSE HOTKEY FIRED chord={chord}");
+                        info!(hotkey = %chord, "mouse hotkey pressed");
+                        dispatch_action(&app_handle, &action, &index_clip_ids);
+                    }
+                }
+                _ => {}
+            });
+
+            if let Err(err) = result {
+                warn!(error = ?err, "rdev mouse listener stopped");
+                eprintln!("[buddio] rdev mouse listener failed to start: {err:?}");
+            }
+        });
+
+        info!("mouse hotkey listener started");
+        eprintln!("[buddio] mouse hotkey listener started");
     }
 
     pub fn is_suspended(&self) -> bool {
@@ -297,11 +345,7 @@ impl HotkeyManager {
                     .lock()
                     .insert(clip_id.to_string(), key.clone());
                 if !self.is_suspended() {
-                    if is_mouse_accelerator(&key) {
-                        emit_unsupported_mouse(app, Some(clip_id), &key);
-                    } else {
-                        self.register_clip(app, clip_id, &key)?;
-                    }
+                    self.register_clip(app, clip_id, &key)?;
                 } else {
                     debug!(
                         clip_id = %clip_id,
@@ -326,10 +370,6 @@ impl HotkeyManager {
             .map(|s| normalize_shortcut(&s));
         *self.stop_all.lock() = normalized.clone();
         if let Some(key) = normalized {
-            if is_mouse_accelerator(&key) {
-                emit_unsupported_mouse(app, None, &key);
-                return Ok(());
-            }
             if !self.is_suspended() {
                 self.register_stop_all(app, &key)?;
             }
@@ -400,11 +440,6 @@ impl HotkeyManager {
                 continue;
             }
 
-            if is_mouse_accelerator(hotkey) {
-                emit_unsupported_mouse(app, Some(clip_id), hotkey);
-                continue;
-            }
-
             if let Err(err) = self.register_clip(app, clip_id, hotkey) {
                 warn!(
                     error = %err,
@@ -430,9 +465,7 @@ impl HotkeyManager {
             }
         }
         if let Some(stop) = stop_all {
-            if is_mouse_accelerator(stop) {
-                emit_unsupported_mouse(app, None, stop);
-            } else if let Err(err) = self.register_stop_all(app, stop) {
+            if let Err(err) = self.register_stop_all(app, stop) {
                 warn!(error = %err, hotkey = %stop, "failed to register stop-all hotkey");
                 eprintln!("[buddio] FAILED register stop-all={stop}: {err:#}");
                 let _ = app.emit(
@@ -472,8 +505,13 @@ impl HotkeyManager {
 
     fn register_action(&self, app: &AppHandle, hotkey: &str, action: HotkeyAction) -> Result<()> {
         let normalized = normalize_shortcut(hotkey);
+
         if is_mouse_accelerator(&normalized) {
-            bail!("mouse accelerators are not supported by global-hotkey: '{normalized}'");
+            // Matched by the rdev listener thread, not RegisterHotKey.
+            self.mouse_bindings.lock().insert(normalized.clone(), action);
+            info!(hotkey = %normalized, "registered mouse hotkey");
+            eprintln!("[buddio] registered mouse hotkey={normalized}");
+            return Ok(());
         }
 
         let parsed: HotKey = match normalized.parse() {
@@ -517,6 +555,8 @@ impl HotkeyManager {
 
     fn unregister_accelerator(&self, app: &AppHandle, hotkey: &str) -> Result<()> {
         let normalized = normalize_shortcut(hotkey);
+        // No-op if `normalized` isn't a mouse chord / isn't currently bound.
+        self.mouse_bindings.lock().remove(&normalized);
         let Some(parsed) = self.registered.lock().remove(&normalized) else {
             // Still try parse+unregister in case maps are stale.
             if let Ok(hk) = normalized.parse::<HotKey>() {
@@ -547,6 +587,7 @@ impl HotkeyManager {
         self.actions.lock().clear();
         self.index_accelerators.lock().clear();
         self.index_clip_ids.lock().clear();
+        self.mouse_bindings.lock().clear();
         Ok(())
     }
 
@@ -583,22 +624,68 @@ impl HotkeyManager {
     }
 }
 
-fn emit_unsupported_mouse(app: &AppHandle, clip_id: Option<&str>, hotkey: &str) {
-    warn!(hotkey = %hotkey, "mouse hotkey stored but not registered (global-hotkey keyboard-only)");
-    eprintln!(
-        "[buddio] mouse hotkey '{hotkey}' stored but not registered (global-hotkey has no mouse support)"
-    );
-    let _ = app.emit(
-        "hotkey-event",
-        serde_json::json!({
-            "type": "unsupported",
-            "clipId": clip_id,
-            "hotkey": hotkey,
-            "message": format!(
-                "Atalho '{hotkey}' usa botão do mouse — salvo, mas o SO não registra mouse via global-hotkey. Use teclado para atalho global."
-            ),
-        }),
-    );
+/// Run a fired [`HotkeyAction`] — shared by the keyboard (`global-hotkey`) event
+/// handler and the [`HotkeyManager::init_mouse_listener`] rdev callback.
+fn dispatch_action(app: &AppHandle, action: &HotkeyAction, index_clip_ids: &Arc<Mutex<Vec<String>>>) {
+    match action {
+        HotkeyAction::PlayClip(clip_id) => {
+            eprintln!("[buddio] HOTKEY FIRED clip={clip_id}");
+            info!(clip_id = %clip_id, "hotkey pressed");
+            let state = app.state::<AppState>();
+            if let Err(err) = play_clip_by_id(app, &state, clip_id) {
+                warn!(error = %err, "hotkey play failed");
+                eprintln!("[buddio] HOTKEY PLAY FAILED clip={clip_id}: {err:#}");
+            }
+        }
+        HotkeyAction::PlayIndex(index) => {
+            let clip_id = index_clip_ids.lock().get(*index).cloned();
+            let Some(clip_id) = clip_id else {
+                eprintln!("[buddio] index hotkey {index} — no clip at position");
+                return;
+            };
+            eprintln!("[buddio] HOTKEY FIRED index={index} clip={clip_id}");
+            info!(index, clip_id = %clip_id, "index hotkey pressed");
+            let state = app.state::<AppState>();
+            if let Err(err) = play_clip_by_id(app, &state, &clip_id) {
+                warn!(error = %err, "index hotkey play failed");
+            }
+        }
+        HotkeyAction::StopAll => {
+            eprintln!("[buddio] STOP-ALL hotkey fired");
+            let state = app.state::<AppState>();
+            let _ = state.audio.send(audio_engine::AudioCommand::StopAll);
+            let _ = app.emit(
+                "playback-event",
+                crate::models::PlaybackEventPayload::Stopped {
+                    clip_id: "*".into(),
+                },
+            );
+        }
+    }
+}
+
+/// Track Ctrl/Alt/Shift/Meta state from raw rdev key events.
+fn set_modifier(key: rdev::Key, pressed: bool, ctrl: &mut bool, alt: &mut bool, shift: &mut bool, meta: &mut bool) {
+    match key {
+        rdev::Key::ControlLeft | rdev::Key::ControlRight => *ctrl = pressed,
+        rdev::Key::ShiftLeft | rdev::Key::ShiftRight => *shift = pressed,
+        rdev::Key::Alt | rdev::Key::AltGr => *alt = pressed,
+        rdev::Key::MetaLeft | rdev::Key::MetaRight => *meta = pressed,
+        _ => {}
+    }
+}
+
+/// Map an rdev mouse button to our `MouseN` numbering (see [`normalize_shortcut`]).
+/// `Unknown(1)`/`Unknown(2)` are Windows' XBUTTON1/XBUTTON2 (back/forward — "Mouse4"/"Mouse5").
+fn mouse_button_number(button: rdev::Button) -> Option<u8> {
+    match button {
+        rdev::Button::Left => Some(1),
+        rdev::Button::Middle => Some(2),
+        rdev::Button::Right => Some(3),
+        rdev::Button::Unknown(1) => Some(4),
+        rdev::Button::Unknown(2) => Some(5),
+        rdev::Button::Unknown(_) => None,
+    }
 }
 
 fn play_clip_by_id(app: &AppHandle, state: &AppState, clip_id: &str) -> Result<()> {
@@ -722,7 +809,9 @@ impl Default for HotkeyManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_fragile_accelerator, is_mouse_accelerator, normalize_shortcut};
+    use super::{
+        is_fragile_accelerator, is_mouse_accelerator, mouse_button_number, normalize_shortcut,
+    };
 
     #[test]
     fn normalizes_modifiers_and_keys() {
@@ -752,5 +841,17 @@ mod tests {
         assert!(is_mouse_accelerator("Ctrl+Mouse4"));
         assert!(is_mouse_accelerator("CommandOrControl+Mouse5"));
         assert!(!is_mouse_accelerator("CommandOrControl+Alt+1"));
+    }
+
+    #[test]
+    fn maps_rdev_buttons_to_mouse_numbers() {
+        // XBUTTON1 (back) and XBUTTON2 (forward) are what the HotkeyRecorder UI
+        // calls "Mouse4" / "Mouse5" — see formatMouseChord in HotkeyRecorder.tsx.
+        assert_eq!(mouse_button_number(rdev::Button::Left), Some(1));
+        assert_eq!(mouse_button_number(rdev::Button::Middle), Some(2));
+        assert_eq!(mouse_button_number(rdev::Button::Right), Some(3));
+        assert_eq!(mouse_button_number(rdev::Button::Unknown(1)), Some(4));
+        assert_eq!(mouse_button_number(rdev::Button::Unknown(2)), Some(5));
+        assert_eq!(mouse_button_number(rdev::Button::Unknown(9)), None);
     }
 }

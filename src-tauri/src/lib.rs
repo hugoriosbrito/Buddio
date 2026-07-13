@@ -189,6 +189,9 @@ pub fn run() {
             let hotkeys = Arc::new(HotkeyManager::new());
             // Own Win32 RegisterHotKey HWND on this UI thread (no tauri global-shortcut plugin).
             hotkeys.init_os(app.handle())?;
+            // Ctrl/Alt/Shift+Mouse chords: RegisterHotKey can't register mouse buttons,
+            // so this runs a dedicated rdev raw-input listener thread instead.
+            hotkeys.init_mouse_listener(app.handle());
 
             let (audio, event_rx) = AudioEngineHandle::start();
 

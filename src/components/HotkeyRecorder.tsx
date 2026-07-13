@@ -75,9 +75,11 @@ function formatChord(e: KeyboardEvent): string | null {
 /**
  * Mouse buttons via pointerdown.
  * `button`: 0=left, 1=middle, 2=right, 3=back (Mouse4), 4=forward (Mouse5).
- * We only accept Mouse3+ (middle/side) so left/right clicks don't fight the UI.
+ * We only accept Mouse2+ (middle/side) so left/right clicks don't fight the UI.
  *
- * Note: global-hotkey cannot register mouse — chord is stored; OS registration is skipped.
+ * Note: global-hotkey (RegisterHotKey) cannot register mouse buttons, so these
+ * chords are matched globally by a separate rdev listener on the Rust side
+ * (see HotkeyManager::init_mouse_listener) instead of the OS hotkey table.
  */
 function formatMouseChord(e: PointerEvent): string | null {
   if (e.pointerType && e.pointerType !== "mouse") return null;
@@ -241,8 +243,8 @@ export function HotkeyRecorder({ value, onChange, label = "Atalho" }: Props) {
           </div>
           <p className="text-[14px] font-semibold">Aguardando combinação…</p>
           <p className="max-w-sm text-center text-[12px] text-[var(--buddio-text-secondary)]">
-            Teclas sozinhas como F12 não funcionam bem no Windows. Botões do mouse
-            são salvos, mas o atalho global do SO só registra teclado.
+            Teclas sozinhas como F12 não funcionam bem no Windows. Botões do
+            mouse (Ctrl/Alt/Shift + botão lateral) também funcionam globalmente.
           </p>
           <Button variant="secondary" onClick={() => void stopRecording()}>
             Cancelar
