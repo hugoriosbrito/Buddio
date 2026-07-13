@@ -21,8 +21,14 @@ use crate::models::{ImportResult, WatchedFolderDto};
 use crate::AppState;
 
 const DEBOUNCE: Duration = Duration::from_millis(500);
+/// Defensive fallback only — the worker normally wakes immediately on
+/// `WorkerMsg::Resync` or a filesystem event, never by hitting this timeout.
+const IDLE_FALLBACK: Duration = Duration::from_secs(3600);
 
-enum WatchCmd {
+/// Fs events and resync requests share one channel so the worker thread never
+/// blocks on filesystem activity while a resync (add/remove/pause folder) waits.
+enum WorkerMsg {
+    Fs(notify::Result<notify::Event>),
     Resync,
 }
 
@@ -31,7 +37,7 @@ pub struct FolderWatchManager {
     conn: Arc<Mutex<Connection>>,
     library: Arc<LibraryManager>,
     collections: Arc<CollectionsManager>,
-    cmd_tx: Mutex<Option<mpsc::Sender<WatchCmd>>>,
+    cmd_tx: Mutex<Option<mpsc::Sender<WorkerMsg>>>,
 }
 
 impl FolderWatchManager {
@@ -178,7 +184,7 @@ impl FolderWatchManager {
 
     fn request_resync(&self) {
         if let Some(tx) = self.cmd_tx.lock().as_ref() {
-            let _ = tx.send(WatchCmd::Resync);
+            let _ = tx.send(WorkerMsg::Resync);
         }
     }
 
@@ -188,12 +194,12 @@ impl FolderWatchManager {
             return Ok(());
         }
 
-        let (cmd_tx, cmd_rx) = mpsc::channel::<WatchCmd>();
-        let (event_tx, event_rx) = mpsc::channel();
+        let (tx, rx) = mpsc::channel::<WorkerMsg>();
+        let event_tx = tx.clone();
 
         let mut watcher = RecommendedWatcher::new(
             move |res| {
-                let _ = event_tx.send(res);
+                let _ = event_tx.send(WorkerMsg::Fs(res));
             },
             notify::Config::default(),
         )
@@ -203,7 +209,7 @@ impl FolderWatchManager {
         let mut watching: HashSet<PathBuf> = HashSet::new();
         apply_watches(&mut watcher, &roots, &mut watching);
 
-        *self.cmd_tx.lock() = Some(cmd_tx);
+        *self.cmd_tx.lock() = Some(tx);
 
         let library = self.library.clone();
         let collections = self.collections.clone();
@@ -218,13 +224,13 @@ impl FolderWatchManager {
 
                 loop {
                     let timeout = if pending.is_empty() {
-                        Duration::from_secs(60)
+                        IDLE_FALLBACK
                     } else {
                         DEBOUNCE
                     };
 
-                    match event_rx.recv_timeout(timeout) {
-                        Ok(Ok(event)) => {
+                    match rx.recv_timeout(timeout) {
+                        Ok(WorkerMsg::Fs(Ok(event))) => {
                             if matches!(
                                 event.kind,
                                 EventKind::Create(_) | EventKind::Modify(_) | EventKind::Any
@@ -236,8 +242,26 @@ impl FolderWatchManager {
                                 }
                             }
                         }
-                        Ok(Err(err)) => {
+                        Ok(WorkerMsg::Fs(Err(err))) => {
                             warn!(error = %err, "folder watch notify error");
+                        }
+                        Ok(WorkerMsg::Resync) => {
+                            let next = {
+                                let conn = manager_conn.lock();
+                                load_enabled_roots_locked(&conn)
+                            };
+                            match next {
+                                Ok(next_roots) => {
+                                    if let Some(w) = watcher.as_mut() {
+                                        apply_watches(w, &next_roots, &mut watching);
+                                    }
+                                    roots = next_roots;
+                                    debug!(count = roots.len(), "folder watches resynced");
+                                }
+                                Err(err) => {
+                                    warn!(error = %err, "failed to resync watched folders");
+                                }
+                            }
                         }
                         Err(RecvTimeoutError::Timeout) => {
                             if !pending.is_empty() {
@@ -252,29 +276,6 @@ impl FolderWatchManager {
                             }
                         }
                         Err(RecvTimeoutError::Disconnected) => break,
-                    }
-
-                    while let Ok(cmd) = cmd_rx.try_recv() {
-                        match cmd {
-                            WatchCmd::Resync => {
-                                let next = {
-                                    let conn = manager_conn.lock();
-                                    load_enabled_roots_locked(&conn)
-                                };
-                                match next {
-                                    Ok(next_roots) => {
-                                        if let Some(w) = watcher.as_mut() {
-                                            apply_watches(w, &next_roots, &mut watching);
-                                        }
-                                        roots = next_roots;
-                                        debug!(count = roots.len(), "folder watches resynced");
-                                    }
-                                    Err(err) => {
-                                        warn!(error = %err, "failed to resync watched folders");
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             })?;
