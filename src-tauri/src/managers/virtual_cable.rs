@@ -259,9 +259,7 @@ pub fn download_and_install(work_dir: &Path, bundled_pack: Option<&Path>) -> Res
 
     match install {
         ElevatedOutcome::Cancelled => {
-            bail!(
-                crate::i18n::t("en", "err.vbcable_uac_cancelled")
-            );
+            bail!(crate::i18n::t("en", "err.vbcable_uac_cancelled"));
         }
         // VB-CABLE often returns odd exit codes and needs a reboot before
         // CABLE Input appears — don't treat that as a hard failure.
@@ -370,10 +368,7 @@ fn download_file(url: &str, dest: &Path) -> Result<()> {
         .call()
         .with_context(|| format!("download VB-CABLE from {url}"))?;
     if !(200..300).contains(&response.status()) {
-        bail!(
-            "could not download VB-CABLE (HTTP {})",
-            response.status()
-        );
+        bail!("could not download VB-CABLE (HTTP {})", response.status());
     }
     let mut reader = response.into_reader();
     let mut file = fs::File::create(dest).with_context(|| format!("create {}", dest.display()))?;

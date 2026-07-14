@@ -947,20 +947,14 @@ pub async fn ensure_virtual_cable(app: AppHandle) -> CmdResult<VirtualCableEnsur
         )
         .is_err()
     {
-        let locale = state
-            .settings
-            .locale()
-            .unwrap_or_else(|_| "en".into());
+        let locale = state.settings.locale().unwrap_or_else(|_| "en".into());
         return Err(crate::i18n::t(&locale, "err.virtual_busy"));
     }
     let busy = state.virtual_cable_busy.clone();
     let settings_mgr = state.settings.clone();
     let audio = state.audio.clone();
     let app_for_block = app.clone();
-    let locale = state
-        .settings
-        .locale()
-        .unwrap_or_else(|_| "en".into());
+    let locale = state.settings.locale().unwrap_or_else(|_| "en".into());
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         let _busy_guard = VirtualCableBusyGuard(busy);
@@ -1032,9 +1026,10 @@ fn ensure_virtual_cable_blocking(
         }
     }
 
-    let playback = status.playback_device.clone().ok_or_else(|| {
-        crate::i18n::t(&locale, "err.virtual_missing_after_install")
-    })?;
+    let playback = status
+        .playback_device
+        .clone()
+        .ok_or_else(|| crate::i18n::t(&locale, "err.virtual_missing_after_install"))?;
 
     // After install Windows often makes VB-CABLE the default Speakers device.
     // Monitor must be a *physical* output — opening Speakers (VB-Audio) + the

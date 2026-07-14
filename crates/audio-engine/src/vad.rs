@@ -46,11 +46,7 @@ impl VadKeepaliveSource {
     fn frame_sample(&self, frame: u64) -> f32 {
         let in_burst = frame < self.initial_burst_frames;
         let (amp, local, window) = if in_burst {
-            (
-                0.48f32,
-                frame,
-                self.initial_burst_frames.max(1),
-            )
+            (0.48f32, frame, self.initial_burst_frames.max(1))
         } else {
             let after = frame - self.initial_burst_frames;
             let period = self.pulse_period_frames.max(1);

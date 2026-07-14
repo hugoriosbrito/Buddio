@@ -134,10 +134,7 @@ impl EngineState {
     }
 
     fn active_playback_count(&self) -> usize {
-        self.playing
-            .keys()
-            .filter(|id| !is_vad_clip_id(id))
-            .count()
+        self.playing.keys().filter(|id| !is_vad_clip_id(id)).count()
     }
 
     fn has_secondary_user_playback(&self) -> bool {
@@ -446,9 +443,11 @@ impl EngineState {
     /// Strong opening burst + soft formant pulses on secondary for the whole
     /// clip — keeps Discord/Zoom VAD open past the first second (music).
     fn start_vad_keepalive(&mut self) {
-        let Some((sample_rate, channels, handle)) = self.secondary.as_ref().map(|s| {
-            (s.sample_rate, s.channels, s.handle.clone())
-        }) else {
+        let Some((sample_rate, channels, handle)) = self
+            .secondary
+            .as_ref()
+            .map(|s| (s.sample_rate, s.channels, s.handle.clone()))
+        else {
             return;
         };
         // Replace any previous keepalive rather than stacking sinks.
