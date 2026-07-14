@@ -626,8 +626,8 @@ fn open_output_path(name: Option<&str>) -> Result<OutputPath, String> {
         .default_output_config()
         .map(|c| (c.sample_rate().0, c.channels()))
         .unwrap_or((48_000, 2));
-    let (stream, handle) =
-        OutputStream::try_from_device(&device).map_err(|e| map_open_stream_error(&e.to_string()))?;
+    let (stream, handle) = OutputStream::try_from_device(&device)
+        .map_err(|e| map_open_stream_error(&e.to_string()))?;
     Ok(OutputPath {
         _stream: stream,
         handle,

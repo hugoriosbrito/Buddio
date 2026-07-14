@@ -137,11 +137,7 @@ pub fn pick_physical_monitor(
     devices
         .iter()
         .find(|(n, is_default)| *is_default && !is_virtual_playback_name(n))
-        .or_else(|| {
-            devices
-                .iter()
-                .find(|(n, _)| !is_virtual_playback_name(n))
-        })
+        .or_else(|| devices.iter().find(|(n, _)| !is_virtual_playback_name(n)))
         .map(|(n, _)| n.clone())
 }
 
@@ -310,9 +306,7 @@ fn driver_service_present() -> bool {
     .stdout(std::process::Stdio::null())
     .stderr(std::process::Stdio::null());
     cmd.creation_flags(CREATE_NO_WINDOW);
-    cmd.status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    cmd.status().map(|s| s.success()).unwrap_or(false)
 }
 
 #[cfg(windows)]
@@ -368,7 +362,10 @@ fn download_file(url: &str, dest: &Path) -> Result<()> {
     // Pure Rust HTTP — never Spawn powershell/Invoke-WebRequest (that opens
     // visible consoles and blocks the UI thread harder than a blocking ureq call).
     let response = ureq::get(url)
-        .set("User-Agent", "Buddio/1.0 (+https://github.com/hugoriosbrito/Buddio)")
+        .set(
+            "User-Agent",
+            "Buddio/1.0 (+https://github.com/hugoriosbrito/Buddio)",
+        )
         .timeout(Duration::from_secs(180))
         .call()
         .with_context(|| format!("download VB-CABLE from {url}"))?;
@@ -379,8 +376,7 @@ fn download_file(url: &str, dest: &Path) -> Result<()> {
         );
     }
     let mut reader = response.into_reader();
-    let mut file = fs::File::create(dest)
-        .with_context(|| format!("create {}", dest.display()))?;
+    let mut file = fs::File::create(dest).with_context(|| format!("create {}", dest.display()))?;
     io::copy(&mut reader, &mut file).context("write VB-CABLE zip")?;
     file.flush()?;
     if !dest.is_file() || dest.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
@@ -549,9 +545,7 @@ fn run_elevated_install(setup: &Path, pack_dir: &Path) -> Result<ElevatedOutcome
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     status_cmd.creation_flags(CREATE_NO_WINDOW);
-    let status = status_cmd
-        .status()
-        .context("elevated VB-CABLE install")?;
+    let status = status_cmd.status().context("elevated VB-CABLE install")?;
 
     let _ = fs::remove_file(&script_path);
 
@@ -668,9 +662,6 @@ mod tests {
             Some("CABLE In 16 Ch (VB-Audio Virtual Cable)"),
         );
         assert!(enabled);
-        assert_eq!(
-            monitor.as_deref(),
-            Some("Alto-falantes (Realtek(R) Audio)")
-        );
+        assert_eq!(monitor.as_deref(), Some("Alto-falantes (Realtek(R) Audio)"));
     }
 }
