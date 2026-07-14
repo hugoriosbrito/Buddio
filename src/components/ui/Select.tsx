@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { useT } from "../../i18n";
 import { cn } from "../../lib/cn";
 
 export type SelectOption = {
@@ -35,12 +36,14 @@ export function Select({
   options,
   onChange,
   disabled,
-  placeholder = "Selecionar",
+  placeholder,
   className,
   id,
   size = "md",
   "aria-label": ariaLabel,
 }: Props) {
+  const t = useT();
+  const resolvedPlaceholder = placeholder ?? t("common.select");
   const listId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLUListElement>(null);
@@ -49,7 +52,7 @@ export function Select({
   const [activeIndex, setActiveIndex] = useState(0);
 
   const selected = options.find((o) => o.value === value);
-  const label = selected?.label ?? placeholder;
+  const label = selected?.label ?? resolvedPlaceholder;
 
   const updatePos = () => {
     const el = triggerRef.current;

@@ -13,6 +13,7 @@ import { Search } from "../components/ui/Search";
 import { Select } from "../components/ui/Select";
 import { Toggle } from "../components/ui/Toggle";
 import { Waveform } from "../components/Waveform";
+import { useT } from "../i18n";
 import * as api from "../lib/api";
 import { cn } from "../lib/cn";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -20,6 +21,7 @@ import { useToastStore } from "../stores/toastStore";
 import { useUiStore } from "../stores/uiStore";
 
 export function RoutingView() {
+  const t = useT();
   const settings = useSettingsStore((s) => s.settings);
   const devices = useSettingsStore((s) => s.devices);
   const setOutputs = useSettingsStore((s) => s.setOutputs);
@@ -32,23 +34,27 @@ export function RoutingView() {
 
   const hasSecondary = Boolean(settings.secondaryDevice);
   const monitorLabel = settings.monitorEnabled
-    ? (settings.monitorDevice ?? "Padrão do sistema")
-    : "Desligado";
-  const virtualLabel = settings.secondaryDevice ?? "Não configurada";
+    ? (settings.monitorDevice ?? t("common.systemDefault"))
+    : t("common.off");
+  const virtualLabel = settings.secondaryDevice ?? t("common.notConfigured");
 
   const secondaryOptions = [
-    { value: "", label: "Não configurada" },
+    { value: "", label: t("common.notConfigured") },
     ...devices.map((d) => ({
       value: d.name,
-      label: d.isDefault ? `${d.name} (padrão)` : d.name,
+      label: d.isDefault
+        ? t("common.deviceDefaultSuffix", { name: d.name })
+        : d.name,
     })),
   ];
 
   const monitorOptions = [
-    { value: "", label: "Padrão do sistema" },
+    { value: "", label: t("common.systemDefault") },
     ...devices.map((d) => ({
       value: d.name,
-      label: d.isDefault ? `${d.name} (padrão)` : d.name,
+      label: d.isDefault
+        ? t("common.deviceDefaultSuffix", { name: d.name })
+        : d.name,
     })),
   ];
 
@@ -56,14 +62,14 @@ export function RoutingView() {
     <div className="buddio-scroll flex h-full flex-col gap-[var(--space-gap)] overflow-y-auto px-[var(--space-pad-x)] py-[var(--space-pad-y)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-[length:var(--heading-size)] font-bold leading-none">Roteamento</h1>
+          <h1 className="text-[length:var(--heading-size)] font-bold leading-none">{t("routing.title")}</h1>
           <p className="mt-2 text-[13px] text-[var(--buddio-text-secondary)]">
-            Veja e teste exatamente para onde cada áudio está indo.
+            {t("routing.subtitle")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Search
-            placeholder="Buscar"
+            placeholder={t("common.search")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onClear={() => setQuery("")}
@@ -87,7 +93,7 @@ export function RoutingView() {
               })();
             }}
           >
-            Ativar rota
+            {t("routing.activateRoute")}
           </Button>
           <Button
             variant="secondary"
@@ -100,7 +106,7 @@ export function RoutingView() {
                 );
             }}
           >
-            Diagnóstico
+            {t("routing.diagnostics")}
           </Button>
           <Button
             variant="secondary"
@@ -108,7 +114,7 @@ export function RoutingView() {
               void api
                 .playTestSample()
                 .then(() =>
-                  push({ kind: "success", message: "Sample de teste reproduzido" }),
+                  push({ kind: "success", message: t("routing.testOk") }),
                 )
                 .catch((err: unknown) =>
                   push({
@@ -118,29 +124,29 @@ export function RoutingView() {
                 );
             }}
           >
-            Testar roteamento
+            {t("routing.testRouting")}
           </Button>
         </div>
       </div>
 
       <section className="rounded-[var(--radius-card)] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] p-4">
-        <p className="mb-3 text-[15px] font-bold">Fluxo de áudio</p>
+        <p className="mb-3 text-[15px] font-bold">{t("routing.audioFlow")}</p>
         <div className="flex flex-wrap items-stretch gap-2">
           <RouteCard
-            title="Microfone"
-            subtitle="Entrada do sistema"
+            title={t("routing.mic")}
+            subtitle={t("routing.micSystem")}
             icon={<Microphone size={18} weight="duotone" />}
             ok
           />
           <Arrow />
           <RouteCard
-            title="Mixer Buddio"
+            title={t("routing.mixer")}
             subtitle={
               settings.micRouteMode === "soundOnly"
-                ? "Só som (block voice)"
+                ? t("routing.mixer.soundOnly")
                 : settings.micRouteMode === "ducking"
-                  ? "Ducking ativo"
-                  : "Voz + soundboard"
+                  ? t("routing.mixer.ducking")
+                  : t("routing.mixer.mix")
             }
             icon={<WaveIcon size={18} weight="duotone" />}
             highlight
@@ -148,14 +154,14 @@ export function RoutingView() {
           />
           <Arrow />
           <RouteCard
-            title="Microfone virtual"
+            title={t("routing.virtualMic")}
             subtitle={virtualLabel}
             icon={<Lightning size={18} weight="duotone" />}
             ok={hasSecondary}
           />
           <Arrow />
           <RouteCard
-            title="Monitor"
+            title={t("routing.monitor")}
             subtitle={monitorLabel}
             icon={<SpeakerHigh size={18} weight="duotone" />}
             ok={settings.monitorEnabled}
@@ -165,26 +171,26 @@ export function RoutingView() {
 
       <div className="grid gap-[var(--space-gap)] lg:grid-cols-2">
         <section className="rounded-[var(--radius-card)] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] p-4">
-          <p className="mb-3 text-[15px] font-bold">Entrada e mixagem</p>
+          <p className="mb-3 text-[15px] font-bold">{t("routing.inputMix")}</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Microfone" className="sm:col-span-2">
+            <Field label={t("routing.mic")} className="sm:col-span-2">
               <Select
-                aria-label="Microfone"
+                aria-label={t("routing.mic")}
                 value="system"
                 options={[
-                  { value: "system", label: "Microfone padrão do sistema" },
+                  { value: "system", label: t("routing.systemMic") },
                 ]}
                 onChange={() => undefined}
               />
             </Field>
-            <Field label="Modo do microfone" className="sm:col-span-2">
+            <Field label={t("settings.micMode")} className="sm:col-span-2">
               <Select
-                aria-label="Modo do microfone"
+                aria-label={t("settings.micMode")}
                 value={settings.micRouteMode}
                 options={[
-                  { value: "mix", label: "Misturar voz + sons" },
-                  { value: "ducking", label: "Ducking (abaixa a voz)" },
-                  { value: "soundOnly", label: "Só som (block voice)" },
+                  { value: "mix", label: t("settings.micMode.mix") },
+                  { value: "ducking", label: t("routing.micMode.ducking") },
+                  { value: "soundOnly", label: t("routing.micMode.soundOnly") },
                 ]}
                 onChange={(next) => {
                   void setMicRoute(
@@ -195,18 +201,18 @@ export function RoutingView() {
                       kind: "info",
                       message:
                         next === "soundOnly"
-                          ? "Mic mudo enquanto um som toca"
+                          ? t("routing.toast.soundOnly")
                           : next === "ducking"
-                            ? "Voz abaixa durante o playback"
-                            : "Voz e sons juntos no CABLE",
+                            ? t("routing.toast.ducking")
+                            : t("routing.toast.mix"),
                     }),
                   );
                 }}
               />
             </Field>
-            <Field label="Ducking">
+            <Field label={t("routing.ducking")}>
               <Select
-                aria-label="Ducking"
+                aria-label={t("routing.ducking")}
                 value={String(settings.duckingDb)}
                 options={[
                   { value: "0", label: "0 dB" },
@@ -218,15 +224,15 @@ export function RoutingView() {
                 }}
               />
             </Field>
-            <Field label="Alvo de volume dos sons (LUFS)">
+            <Field label={t("routing.lufsTarget")}>
               <Select
-                aria-label="Alvo de volume dos sons"
+                aria-label={t("routing.lufsTarget")}
                 value={String(settings.voiceTargetLufs)}
                 options={[
-                  { value: "-23", label: "-23 LUFS (suave)" },
-                  { value: "-16", label: "-16 LUFS (padrão)" },
-                  { value: "-14", label: "-14 LUFS (streaming)" },
-                  { value: "-11", label: "-11 LUFS (alto)" },
+                  { value: "-23", label: t("routing.lufs.soft") },
+                  { value: "-16", label: t("routing.lufs.default") },
+                  { value: "-14", label: t("routing.lufs.streaming") },
+                  { value: "-11", label: t("routing.lufs.loud") },
                 ]}
                 onChange={async (next) => {
                   try {
@@ -234,7 +240,7 @@ export function RoutingView() {
                     await hydrate();
                     push({
                       kind: "info",
-                      message: "Novos sons importados vão normalizar para este alvo",
+                      message: t("routing.lufsToast"),
                     });
                   } catch (err) {
                     push({ kind: "error", message: String(err) });
@@ -242,9 +248,9 @@ export function RoutingView() {
                 }}
               />
             </Field>
-            <Field label="Microfone virtual">
+            <Field label={t("routing.virtualMic")}>
               <Select
-                aria-label="Microfone virtual"
+                aria-label={t("routing.virtualMic")}
                 value={settings.secondaryDevice ?? ""}
                 options={secondaryOptions}
                 onChange={(next) =>
@@ -256,9 +262,9 @@ export function RoutingView() {
                 }
               />
             </Field>
-            <Field label="Monitor" className="sm:col-span-2">
+            <Field label={t("routing.monitor")} className="sm:col-span-2">
               <Select
-                aria-label="Monitor"
+                aria-label={t("routing.monitor")}
                 value={settings.monitorDevice ?? ""}
                 options={monitorOptions}
                 onChange={(next) =>
@@ -268,7 +274,7 @@ export function RoutingView() {
             </Field>
             <div className="flex flex-col gap-3 sm:col-span-2">
               <Toggle
-                label="Ouvir no monitor"
+                label={t("settings.monitorEnabled")}
                 checked={settings.monitorEnabled}
                 onChange={(checked) =>
                   void setOutputs(
@@ -279,7 +285,7 @@ export function RoutingView() {
                 }
               />
               <Toggle
-                label="Som de ativação de voz (VAD)"
+                label={t("settings.vadSound")}
                 checked={settings.vadSoundEnabled}
                 onChange={async (enabled) => {
                   try {
@@ -288,8 +294,8 @@ export function RoutingView() {
                     push({
                       kind: "info",
                       message: enabled
-                        ? "Keep-alive VAD ligado — mantém o Discord transmitindo durante o som inteiro"
-                        : "VAD sound desligado",
+                        ? t("routing.vadOn")
+                        : t("routing.vadOff"),
                     });
                   } catch (err) {
                     push({ kind: "error", message: String(err) });
@@ -297,26 +303,17 @@ export function RoutingView() {
                 }}
               />
               <p className="text-[12px] text-[var(--buddio-text-secondary)]">
-                Se músicas longas saírem cortadas no Discord: desative{" "}
-                <strong className="font-semibold text-[var(--buddio-text)]">
-                  Supressão de ruído
-                </strong>{" "}
-                e{" "}
-                <strong className="font-semibold text-[var(--buddio-text)]">
-                  Cancelamento de eco
-                </strong>{" "}
-                no app de voz, ou baixe o limiar de atividade de voz. O Krisp
-                costuma engolir música.
+                {t("routing.vadDiscordHint")}
               </p>
             </div>
           </div>
         </section>
 
         <section className="flex flex-col rounded-[var(--radius-card)] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] p-4">
-          <p className="mb-3 text-[15px] font-bold">Saídas</p>
+          <p className="mb-3 text-[15px] font-bold">{t("routing.outputs")}</p>
           <div className="flex flex-col gap-3">
             <OutputCard
-              title="Microfone virtual"
+              title={t("routing.virtualMic")}
               subtitle={virtualLabel}
               icon={
                 <Lightning
@@ -328,7 +325,7 @@ export function RoutingView() {
               tone={hasSecondary ? "ok" : "warn"}
             />
             <OutputCard
-              title="Monitor"
+              title={t("routing.monitor")}
               subtitle={monitorLabel}
               icon={<Desktop size={16} weight="fill" />}
               tone={settings.monitorEnabled ? "ok" : "muted"}
@@ -336,14 +333,14 @@ export function RoutingView() {
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => setDiagnosticsOpen(true)}>
-              Executar diagnóstico
+              {t("routing.runDiagnostics")}
             </Button>
             <Button
               variant="primary"
               icon={<ArrowsClockwise size={16} weight="bold" />}
               onClick={() => setDiagnosticsOpen(true)}
             >
-              Reparar rota
+              {t("routing.repairRoute")}
             </Button>
           </div>
         </section>

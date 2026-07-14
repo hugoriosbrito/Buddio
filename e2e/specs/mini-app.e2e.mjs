@@ -44,19 +44,19 @@ describe("Mini window", () => {
     await pad.click();
     await browser.waitUntil(
       async () => (await pad.getAttribute("class")).includes("surface-selected"),
-      { timeout: 5000, timeoutMsg: "pad nao entrou em estado 'tocando'" },
+      { timeout: 5000, timeoutMsg: "pad did not enter playing state" },
     );
     await pad.click();
     await browser.waitUntil(
       async () => !(await pad.getAttribute("class")).includes("surface-selected"),
-      { timeout: 5000, timeoutMsg: "pad nao voltou ao estado 'parado'" },
+      { timeout: 5000, timeoutMsg: "pad did not return to stopped state" },
     );
   });
 
-  it("stops everything via 'Parar tudo'", async () => {
+  it("stops everything via 'Stop all'", async () => {
     const clips = await listClips(browser);
     await $(`button*=${clips[0].name}`).click();
-    await $("button=Parar tudo").click();
+    await $("button*=Stop all").click();
     const pad = await $(`button*=${clips[0].name}`);
     await browser.waitUntil(
       async () => !(await pad.getAttribute("class")).includes("surface-selected"),
@@ -66,22 +66,29 @@ describe("Mini window", () => {
 
   it("filters the pinned list via quick search", async () => {
     const clips = await listClips(browser);
-    await $('input[placeholder="Busca rápida"]').setValue(clips[0].name);
+    await $('input[placeholder="Search sounds or shortcuts"]').setValue(
+      clips[0].name,
+    );
     await expect($(`*=${clips[0].name}`)).toBeExisting();
-    await $('input[placeholder="Busca rápida"]').setValue("no-such-clip-xyz");
+    await $('input[placeholder="Search sounds or shortcuts"]').setValue(
+      "no-such-clip-xyz",
+    );
     await expect($(`*=${clips[0].name}`)).not.toBeExisting();
-    await $('input[placeholder="Busca rápida"]').setValue("");
+    await $('input[placeholder="Search sounds or shortcuts"]').setValue("");
   });
 
   it("toggles ultra-compact mode", async () => {
-    await $("button=Compacto").click();
-    await expect($("button=Expandir")).toBeExisting({ wait: 5000 });
-    await $("button=Expandir").click();
-    await expect($("button=Compacto")).toBeExisting({ wait: 5000 });
+    await $("button[aria-label='Mini menu']").click();
+    await $("button=Compact mode").click();
+    await expect($("button=Expand")).toBeExisting({ wait: 5000 });
+    await $("button=Expand").click();
+    await expect($("button[aria-label='Mini menu']")).toBeExisting({
+      wait: 5000,
+    });
   });
 
-  it("opens the main window from 'Abrir'", async () => {
-    await $("button=Abrir").click();
+  it("opens the main window from 'Open Buddio'", async () => {
+    await $("button*=Open Buddio").click();
     const handles = await browser.getWindowHandles();
     const mainHandle = handles.find((h) => h !== miniHandle);
     await browser.switchToWindow(mainHandle);

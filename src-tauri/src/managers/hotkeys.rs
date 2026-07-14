@@ -324,9 +324,11 @@ impl HotkeyManager {
                 let key = normalize_shortcut(&key);
 
                 if is_fragile_accelerator(&key) {
-                    bail!(
-                        "Atalhos sem Ctrl/Alt/Shift não funcionam bem no Windows (ex.: F12). Use Ctrl+Shift+1."
-                    );
+                    let locale = app
+                        .try_state::<AppState>()
+                        .and_then(|s| s.settings.locale().ok())
+                        .unwrap_or_else(|| "en".into());
+                    bail!("{}", crate::i18n::t(&locale, "err.hotkey_bare_keys"));
                 }
 
                 if let Some(stop) = self.stop_all.lock().clone() {
@@ -423,6 +425,7 @@ impl HotkeyManager {
                 eprintln!(
                     "[buddio] clearing fragile hotkey clip={clip_id} hotkey={hotkey} (needs Ctrl/Alt/Shift)"
                 );
+                let locale = state.settings.locale().unwrap_or_else(|_| "en".into());
                 let _ = state.library.set_hotkey(clip_id, None);
                 self.bindings.lock().remove(clip_id);
                 let _ = app.emit(
@@ -431,8 +434,10 @@ impl HotkeyManager {
                         "type": "clearedFragile",
                         "clipId": clip_id,
                         "hotkey": hotkey,
-                        "message": format!(
-                            "Atalho '{hotkey}' foi removido: teclas sozinhas não registram no Windows. Capture Ctrl+Shift+1 (ou similar)."
+                        "message": crate::i18n::tf(
+                            &locale,
+                            "err.hotkey_removed_bare",
+                            &[("hotkey", hotkey)],
                         ),
                     }),
                 );
@@ -447,6 +452,7 @@ impl HotkeyManager {
                     "failed to register clip hotkey"
                 );
                 eprintln!("[buddio] FAILED register clip={clip_id} hotkey={hotkey}: {err:#}");
+                let locale = state.settings.locale().unwrap_or_else(|_| "en".into());
                 // Persist clear so the UI doesn't keep showing a dead binding.
                 let _ = state.library.set_hotkey(clip_id, None);
                 self.bindings.lock().remove(clip_id);
@@ -456,8 +462,10 @@ impl HotkeyManager {
                         "type": "registerFailed",
                         "clipId": clip_id,
                         "hotkey": hotkey,
-                        "message": format!(
-                            "Atalho '{hotkey}' indisponível (outro app já usa). Foi limpo — capture outro com Ctrl/Alt/Shift."
+                        "message": crate::i18n::tf(
+                            &locale,
+                            "err.hotkey_conflict",
+                            &[("hotkey", hotkey)],
                         ),
                     }),
                 );
@@ -467,14 +475,17 @@ impl HotkeyManager {
             if let Err(err) = self.register_stop_all(app, stop) {
                 warn!(error = %err, hotkey = %stop, "failed to register stop-all hotkey");
                 eprintln!("[buddio] FAILED register stop-all={stop}: {err:#}");
+                let locale = state.settings.locale().unwrap_or_else(|_| "en".into());
                 let _ = app.emit(
                     "hotkey-event",
                     serde_json::json!({
                         "type": "registerFailed",
                         "clipId": null,
                         "hotkey": stop,
-                        "message": format!(
-                            "Atalho de Parar tudo '{stop}' indisponível. Vá em Configurações e escolha outro (ex.: Ctrl+Shift+Backspace)."
+                        "message": crate::i18n::tf(
+                            &locale,
+                            "err.stop_all_conflict",
+                            &[("stop", stop)],
                         ),
                     }),
                 );
@@ -523,14 +534,20 @@ impl HotkeyManager {
                     hotkey = %normalized,
                     "hotkey parse failed — skipping registration"
                 );
+                let locale = app
+                    .try_state::<AppState>()
+                    .and_then(|s| s.settings.locale().ok())
+                    .unwrap_or_else(|| "en".into());
                 let _ = app.emit(
                     "hotkey-event",
                     serde_json::json!({
                         "type": "unsupported",
                         "clipId": null,
                         "hotkey": normalized,
-                        "message": format!(
-                            "Atalho '{normalized}' não é suportado pelo sistema e não foi registrado."
+                        "message": crate::i18n::tf(
+                            &locale,
+                            "err.hotkey_unsupported",
+                            &[("normalized", &normalized)],
                         ),
                     }),
                 );

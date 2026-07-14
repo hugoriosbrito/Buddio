@@ -15,12 +15,12 @@ import { Search } from "../components/ui/Search";
 import { Select } from "../components/ui/Select";
 import { Slider } from "../components/ui/Slider";
 import { Toggle } from "../components/ui/Toggle";
+import { LOCALES, useT, type Locale, type MessageKey } from "../i18n";
 import * as api from "../lib/api";
 import { cn } from "../lib/cn";
 import {
   APP_VERSION,
   BUDDIO_GITHUB_REPO,
-  checkForUpdates,
 } from "../lib/updates";
 import { useSettingsStore } from "../stores/settingsStore";
 import {
@@ -30,57 +30,88 @@ import {
   type UiDensity,
 } from "../stores/uiStore";
 import { useToastStore } from "../stores/toastStore";
+import { useUpdateStore } from "../stores/updateStore";
 
 type SettingsSection =
-  | "geral"
+  | "general"
   | "audio"
-  | "atalhos"
-  | "aparencia"
-  | "sobre";
+  | "hotkeys"
+  | "appearance"
+  | "about";
 
-const SECTIONS: { id: SettingsSection; label: string }[] = [
-  { id: "geral", label: "Geral" },
-  { id: "audio", label: "Áudio" },
-  { id: "atalhos", label: "Atalhos" },
-  { id: "aparencia", label: "Aparência" },
-  { id: "sobre", label: "Sobre" },
+const SECTION_IDS: SettingsSection[] = [
+  "general",
+  "audio",
+  "hotkeys",
+  "appearance",
+  "about",
 ];
 
-const ACCENTS: { id: AccentColor; label: string; color: string }[] = [
-  { id: "purple", label: "Roxo", color: "#5b4dff" },
-  { id: "blue", label: "Azul", color: "#3b82f6" },
-  { id: "green", label: "Verde", color: "#22a06b" },
-  { id: "orange", label: "Laranja", color: "#f59e0b" },
-  { id: "red", label: "Vermelho", color: "#ef4444" },
+const ACCENT_IDS: AccentColor[] = [
+  "purple",
+  "blue",
+  "green",
+  "orange",
+  "red",
 ];
+
+const SECTION_LABEL: Record<SettingsSection, MessageKey> = {
+  general: "settings.section.general",
+  audio: "settings.section.audio",
+  hotkeys: "settings.section.hotkeys",
+  appearance: "settings.section.appearance",
+  about: "settings.section.about",
+};
+
+const ACCENT_LABEL: Record<AccentColor, MessageKey> = {
+  purple: "settings.accent.purple",
+  blue: "settings.accent.blue",
+  green: "settings.accent.green",
+  orange: "settings.accent.orange",
+  red: "settings.accent.red",
+};
+
+const ACCENT_COLORS: Record<AccentColor, string> = {
+  purple: "#5b4dff",
+  blue: "#3b82f6",
+  green: "#22a06b",
+  orange: "#f59e0b",
+  red: "#ef4444",
+};
 
 export function SettingsView() {
-  const [section, setSection] = useState<SettingsSection>("geral");
+  const t = useT();
+  const [section, setSection] = useState<SettingsSection>("general");
   const [settingsQuery, setSettingsQuery] = useState("");
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [installedVersion, setInstalledVersion] = useState(APP_VERSION);
+
   const settings = useSettingsStore((s) => s.settings);
   const devices = useSettingsStore((s) => s.devices);
   const error = useSettingsStore((s) => s.error);
+  const setMasterVolume = useSettingsStore((s) => s.setMasterVolume);
   const setOutputs = useSettingsStore((s) => s.setOutputs);
   const setStopAllHotkey = useSettingsStore((s) => s.setStopAllHotkey);
-  const setMasterVolume = useSettingsStore((s) => s.setMasterVolume);
+  const setLocale = useSettingsStore((s) => s.setLocale);
   const hydrate = useSettingsStore((s) => s.hydrate);
+
   const themeMode = useUiStore((s) => s.themeMode);
   const setThemeMode = useUiStore((s) => s.setThemeMode);
   const accent = useUiStore((s) => s.accent);
   const setAccent = useUiStore((s) => s.setAccent);
   const density = useUiStore((s) => s.density);
   const setDensity = useUiStore((s) => s.setDensity);
+  const reduceMotion = useUiStore((s) => s.reduceMotion);
+  const setReduceMotion = useUiStore((s) => s.setReduceMotion);
   const startMinimized = useUiStore((s) => s.startMinimized);
   const setStartMinimized = useUiStore((s) => s.setStartMinimized);
   const startInBackground = useUiStore((s) => s.startInBackground);
   const setStartInBackground = useUiStore((s) => s.setStartInBackground);
-  const reduceMotion = useUiStore((s) => s.reduceMotion);
-  const setReduceMotion = useUiStore((s) => s.setReduceMotion);
   const setOnboardingOpen = useUiStore((s) => s.setOnboardingOpen);
   const setDiagnosticsOpen = useUiStore((s) => s.setDiagnosticsOpen);
   const push = useToastStore((s) => s.push);
+  const checkNow = useUpdateStore((s) => s.checkNow);
+  const updateChecking = useUpdateStore((s) => s.checking);
 
   useEffect(() => {
     void getVersion()
@@ -88,19 +119,33 @@ export function SettingsView() {
       .catch(() => setInstalledVersion(APP_VERSION));
   }, []);
 
+  const sections = SECTION_IDS.map((id) => ({
+    id,
+    label: t(SECTION_LABEL[id]),
+  }));
+
+  const accents = ACCENT_IDS.map((id) => ({
+    id,
+    label: t(ACCENT_LABEL[id]),
+    color: ACCENT_COLORS[id],
+  }));
+
   const monitorOptions = [
-    { value: "", label: "Padrão do sistema" },
+    { value: "", label: t("common.systemDefault") },
     ...devices.map((d) => ({
       value: d.name,
-      label: d.isDefault ? `${d.name} (padrão)` : d.name,
+      label: d.isDefault
+        ? t("common.deviceDefaultSuffix", { name: d.name })
+        : d.name,
     })),
   ];
-
   const secondaryOptions = [
-    { value: "", label: "Desativada" },
+    { value: "", label: t("common.disabled") },
     ...devices.map((d) => ({
       value: d.name,
-      label: d.isDefault ? `${d.name} (padrão)` : d.name,
+      label: d.isDefault
+        ? t("common.deviceDefaultSuffix", { name: d.name })
+        : d.name,
     })),
   ];
 
@@ -109,8 +154,9 @@ export function SettingsView() {
     if (mode === "light" || mode === "dark") {
       try {
         await api.setTheme(mode);
-      } catch {
-        /* local theme still applied */
+        await hydrate();
+      } catch (err) {
+        push({ kind: "error", message: String(err) });
       }
     }
   };
@@ -118,29 +164,27 @@ export function SettingsView() {
   const verifyUpdates = async () => {
     setCheckingUpdate(true);
     try {
-      let current = installedVersion;
-      try {
-        current = await getVersion();
-        setInstalledVersion(current);
-      } catch {
-        /* browser / preview — keep package.json version */
-      }
-      const result = await checkForUpdates(current);
+      const result = await checkNow({ openModal: true });
       switch (result.status) {
         case "up_to_date":
           push({
             kind: "success",
-            message: `Você já está na versão ${result.current} (latest no GitHub: ${result.latest}).`,
+            message: t("settings.update.upToDate", {
+              current: result.current,
+              latest: result.latest,
+            }),
           });
           break;
         case "update_available":
+          // Modal + titlebar badge handle the primary UX; toast is a backup.
           push({
             kind: "info",
-            message: `Nova versão ${result.latest} disponível (você tem ${result.current}).`,
-            actionLabel: "Abrir no GitHub",
-            onAction: () => {
-              void openExternal(result.url);
-            },
+            message: t("settings.update.available", {
+              current: result.current,
+              latest: result.latest,
+            }),
+            actionLabel: t("settings.update.openGithub"),
+            onAction: () => void openExternal(result.url),
           });
           break;
         case "unavailable":
@@ -161,10 +205,10 @@ export function SettingsView() {
 
   let content: ReactNode;
   switch (section) {
-    case "geral":
+    case "general":
       content = (
         <div className="flex flex-col gap-8">
-          <SectionCard title="Geral">
+          <SectionCard title={t("settings.section.general")}>
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="primary"
@@ -176,37 +220,36 @@ export function SettingsView() {
                     )
                 }
               >
-                Abrir Buddio Mini
+                {t("settings.openMini")}
               </Button>
               <Button
                 variant="secondary"
                 onClick={() => setOnboardingOpen(true)}
               >
-                Refazer onboarding de áudio
+                {t("settings.redoOnboarding")}
               </Button>
               <Button
                 variant="secondary"
                 onClick={() => setDiagnosticsOpen(true)}
               >
-                Abrir diagnóstico
+                {t("settings.openDiagnostics")}
               </Button>
             </div>
           </SectionCard>
 
-          <SectionCard title="Inicialização">
+          <SectionCard title={t("settings.startup")}>
             <Toggle
-              label="Iniciar minimizado na bandeja"
+              label={t("settings.startMinimized")}
               checked={startMinimized}
               onChange={setStartMinimized}
             />
             <Toggle
-              label="Iniciar em segundo plano"
+              label={t("settings.startBackground")}
               checked={startInBackground}
               onChange={setStartInBackground}
             />
             <p className="text-[12px] text-[var(--buddio-text-muted)]">
-              Preferências salvas neste computador. O início em segundo plano
-              esconde a janela principal ao abrir (bandeja).
+              {t("settings.startupHint")}
             </p>
           </SectionCard>
         </div>
@@ -214,14 +257,14 @@ export function SettingsView() {
       break;
     case "audio":
       content = (
-        <SectionCard title="Áudio">
+        <SectionCard title={t("settings.section.audio")}>
           <Slider
-            label="Volume master"
+            label={t("settings.masterVolume")}
             value={settings.masterVolume}
             onChange={(v) => void setMasterVolume(v)}
           />
           <Toggle
-            label="Ouvir no monitor"
+            label={t("settings.monitorEnabled")}
             checked={settings.monitorEnabled}
             onChange={(checked) =>
               void setOutputs(
@@ -231,10 +274,10 @@ export function SettingsView() {
               )
             }
           />
-          <Field label="Dispositivo de monitor">
+          <Field label={t("settings.monitorDevice")}>
             <Select
               disabled={!settings.monitorEnabled}
-              aria-label="Dispositivo de monitor"
+              aria-label={t("settings.monitorDevice")}
               value={settings.monitorDevice ?? ""}
               options={monitorOptions}
               onChange={(next) =>
@@ -246,9 +289,9 @@ export function SettingsView() {
               }
             />
           </Field>
-          <Field label="Saída secundária (chamada / virtual)">
+          <Field label={t("settings.secondaryDevice")}>
             <Select
-              aria-label="Saída secundária"
+              aria-label={t("settings.secondaryAria")}
               value={settings.secondaryDevice ?? ""}
               options={secondaryOptions}
               onChange={(next) =>
@@ -260,14 +303,14 @@ export function SettingsView() {
               }
             />
           </Field>
-          <Field label="Modo do microfone">
+          <Field label={t("settings.micMode")}>
             <Select
-              aria-label="Modo do microfone"
+              aria-label={t("settings.micMode")}
               value={settings.micRouteMode}
               options={[
-                { value: "mix", label: "Misturar voz + sons" },
-                { value: "ducking", label: "Ducking" },
-                { value: "soundOnly", label: "Só som" },
+                { value: "mix", label: t("settings.micMode.mix") },
+                { value: "ducking", label: t("settings.micMode.ducking") },
+                { value: "soundOnly", label: t("settings.micMode.soundOnly") },
               ]}
               onChange={async (next) => {
                 try {
@@ -283,7 +326,7 @@ export function SettingsView() {
             />
           </Field>
           <Toggle
-            label="Som de ativação de voz (VAD)"
+            label={t("settings.vadSound")}
             checked={settings.vadSoundEnabled}
             onChange={async (enabled) => {
               try {
@@ -295,12 +338,10 @@ export function SettingsView() {
             }}
           />
           <p className="text-[12px] text-[var(--buddio-text-secondary)]">
-            Mantém o Discord transmitindo durante o som inteiro. Se música ainda
-            sair cortada, desative a supressão de ruído / cancelamento de eco no
-            Discord (o Krisp engole música).
+            {t("settings.vadHint")}
           </p>
           <Toggle
-            label="Atalhos por índice (Ctrl+Alt+N)"
+            label={t("settings.indexHotkeys")}
             checked={settings.indexHotkeysEnabled}
             onChange={async (enabled) => {
               try {
@@ -314,42 +355,63 @@ export function SettingsView() {
         </SectionCard>
       );
       break;
-    case "atalhos":
+    case "hotkeys":
       content = (
-        <SectionCard title="Atalhos">
+        <SectionCard title={t("settings.section.hotkeys")}>
           <HotkeyRecorder
-            label="Atalho parar tudo"
+            label={t("settings.stopAllHotkey")}
             value={settings.stopAllHotkey}
             onChange={setStopAllHotkey}
           />
           <p className="text-[12px] text-[var(--buddio-text-muted)]">
-            Ctrl+K abre a command palette.
+            {t("settings.hotkeysHint")}
           </p>
         </SectionCard>
       );
       break;
-    case "aparencia":
+    case "appearance":
       content = (
-        <SectionCard title="Aparência">
+        <SectionCard title={t("settings.section.appearance")}>
+          <Field label={t("settings.language")}>
+            <Select
+              aria-label={t("settings.language")}
+              value={settings.locale === "pt" ? "pt" : "en"}
+              options={LOCALES.map((item) => ({
+                value: item.id,
+                label: item.nativeLabel,
+              }))}
+              onChange={async (next) => {
+                try {
+                  await setLocale(next as Locale);
+                } catch (err) {
+                  push({ kind: "error", message: String(err) });
+                }
+              }}
+            />
+            <p className="mt-1.5 text-[12px] text-[var(--buddio-text-muted)]">
+              {t("settings.languageHint")}
+            </p>
+          </Field>
+
           <div>
             <p className="mb-3 text-[13px] text-[var(--buddio-text-secondary)]">
-              Tema
+              {t("settings.theme")}
             </p>
             <div className="grid grid-cols-3 gap-3">
               <ThemeCard
-                label="Claro"
+                label={t("settings.theme.light")}
                 icon={<Sun size={22} weight="duotone" />}
                 selected={themeMode === "light"}
                 onClick={() => void applyThemeMode("light")}
               />
               <ThemeCard
-                label="Escuro"
+                label={t("settings.theme.dark")}
                 icon={<Moon size={22} weight="duotone" />}
                 selected={themeMode === "dark"}
                 onClick={() => void applyThemeMode("dark")}
               />
               <ThemeCard
-                label="Sistema"
+                label={t("settings.theme.system")}
                 icon={<Desktop size={22} weight="duotone" />}
                 selected={themeMode === "system"}
                 onClick={() => void applyThemeMode("system")}
@@ -359,14 +421,13 @@ export function SettingsView() {
 
           <div>
             <p className="mb-1 text-[13px] text-[var(--buddio-text-secondary)]">
-              Cor de destaque
+              {t("settings.accent")}
             </p>
             <p className="mb-3 text-[12px] text-[var(--buddio-text-muted)]">
-              Usada no editor (waveform e handles). A marca Buddio permanece
-              roxa.
+              {t("settings.accentHint")}
             </p>
             <div className="flex flex-wrap gap-3">
-              {ACCENTS.map((item) => {
+              {accents.map((item) => {
                 const selected = accent === item.id;
                 return (
                   <button
@@ -394,35 +455,37 @@ export function SettingsView() {
 
           <div>
             <p className="mb-3 text-[13px] text-[var(--buddio-text-secondary)]">
-              Densidade
+              {t("settings.density")}
             </p>
             <DensityGroup value={density} onChange={setDensity} />
           </div>
 
           <Toggle
-            label="Reduzir animações"
+            label={t("settings.reduceMotion")}
             checked={reduceMotion}
             onChange={setReduceMotion}
           />
 
           <p className="text-[12px] text-[var(--buddio-text-muted)]">
-            As alterações de aparência são aplicadas imediatamente.
+            {t("settings.appearanceHint")}
           </p>
         </SectionCard>
       );
       break;
-    case "sobre":
+    case "about":
       content = (
-        <SectionCard title="Sobre">
+        <SectionCard title={t("settings.section.about")}>
           <div className="rounded-[var(--radius-control)] border border-[var(--buddio-border)] bg-[var(--buddio-window)] px-4 py-3">
-            <p className="text-[12px] text-[var(--buddio-text-muted)]">Versão</p>
+            <p className="text-[12px] text-[var(--buddio-text-muted)]">
+              {t("settings.version")}
+            </p>
             <p className="mt-0.5 text-[16px] font-bold tabular-nums">
               {installedVersion}
             </p>
           </div>
           <div className="rounded-[var(--radius-control)] border border-[var(--buddio-border)] bg-[var(--buddio-window)] px-4 py-3">
             <p className="text-[12px] text-[var(--buddio-text-muted)]">
-              Repositório
+              {t("settings.repository")}
             </p>
             <p className="mt-0.5 text-[13px] font-semibold">{BUDDIO_GITHUB_REPO}</p>
             <Button
@@ -433,24 +496,25 @@ export function SettingsView() {
                 void openExternal(`https://github.com/${BUDDIO_GITHUB_REPO}`)
               }
             >
-              Abrir no GitHub
+              {t("settings.openGithub")}
             </Button>
           </div>
           <div>
             <p className="mb-2 text-[13px] text-[var(--buddio-text-secondary)]">
-              Atualizações
+              {t("settings.updates")}
             </p>
             <p className="mb-3 text-[13px] text-[var(--buddio-text-secondary)]">
-              Consulta a release mais recente publicada no GitHub (incluindo
-              release candidates).
+              {t("settings.updatesHint")}
             </p>
             <Button
               variant="secondary"
-              disabled={checkingUpdate}
+              disabled={checkingUpdate || updateChecking}
               icon={<ArrowClockwise size={16} weight="bold" />}
               onClick={() => void verifyUpdates()}
             >
-              {checkingUpdate ? "Verificando…" : "Verificar atualizações"}
+              {checkingUpdate
+                ? t("settings.checkingUpdates")
+                : t("settings.checkUpdates")}
             </Button>
           </div>
         </SectionCard>
@@ -466,14 +530,16 @@ export function SettingsView() {
     <div className="buddio-scroll h-full overflow-y-auto px-[var(--space-pad-x)] py-[var(--space-pad-y)]">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-[length:var(--heading-size)] font-bold leading-none">Configurações</h1>
+          <h1 className="text-[length:var(--heading-size)] font-bold leading-none">
+            {t("settings.title")}
+          </h1>
           <p className="mt-2 text-[13px] text-[var(--buddio-text-secondary)]">
-            Ajuste o comportamento, aparência e integração do Buddio.
+            {t("settings.subtitle")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Search
-            placeholder="Buscar"
+            placeholder={t("common.search")}
             value={settingsQuery}
             onChange={(e) => setSettingsQuery(e.target.value)}
             onClear={() => setSettingsQuery("")}
@@ -491,33 +557,35 @@ export function SettingsView() {
       <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--buddio-border)] bg-[var(--buddio-surface)]">
         <div className="flex flex-col gap-0 lg:flex-row">
           <nav
-            aria-label="Seções de configuração"
+            aria-label={t("settings.sectionsAria")}
             className="flex shrink-0 flex-row gap-1 overflow-x-auto border-b border-[var(--buddio-border-subtle)] p-3 lg:w-[180px] lg:flex-col lg:border-b-0 lg:border-r"
           >
-            {SECTIONS.filter(
-              (item) =>
-                !settingsQuery.trim() ||
-                item.label
-                  .toLowerCase()
-                  .includes(settingsQuery.trim().toLowerCase()),
-            ).map((item) => {
-              const active = section === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setSection(item.id)}
-                  className={cn(
-                    "h-[var(--control-h)] shrink-0 rounded-[10px] px-3 text-left text-[13px] font-semibold transition-colors",
-                    active
-                      ? "bg-[var(--buddio-brand-soft)] text-[var(--buddio-brand-deep)]"
-                      : "text-[var(--buddio-text-secondary)] hover:bg-[var(--buddio-surface-secondary)] hover:text-[var(--buddio-text)]",
-                  )}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
+            {sections
+              .filter(
+                (item) =>
+                  !settingsQuery.trim() ||
+                  item.label
+                    .toLowerCase()
+                    .includes(settingsQuery.trim().toLowerCase()),
+              )
+              .map((item) => {
+                const active = section === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setSection(item.id)}
+                    className={cn(
+                      "h-[var(--control-h)] shrink-0 rounded-[10px] px-3 text-left text-[13px] font-semibold transition-colors",
+                      active
+                        ? "bg-[var(--buddio-brand-soft)] text-[var(--buddio-brand-deep)]"
+                        : "text-[var(--buddio-text-secondary)] hover:bg-[var(--buddio-surface-secondary)] hover:text-[var(--buddio-text)]",
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
           </nav>
 
           <div className="min-w-0 flex-1 p-5">{content}</div>
@@ -603,9 +671,10 @@ function DensityGroup({
   value: UiDensity;
   onChange: (value: UiDensity) => void;
 }) {
+  const t = useT();
   const options: { id: UiDensity; label: string }[] = [
-    { id: "comfortable", label: "Expandida" },
-    { id: "compact", label: "Compacta" },
+    { id: "comfortable", label: t("settings.density.comfortable") },
+    { id: "compact", label: t("settings.density.compact") },
   ];
 
   return (

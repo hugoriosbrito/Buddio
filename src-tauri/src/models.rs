@@ -164,6 +164,8 @@ pub struct AppSettings {
     pub secondary_device: Option<String>,
     pub stop_all_hotkey: Option<String>,
     pub theme: String,
+    /// UI locale: `en` | `pt`.
+    pub locale: String,
     pub active_profile_id: Option<String>,
     pub onboarding_done: bool,
     /// Legacy mirror: true when mic_route_mode is Mix or Ducking (voice present when idle).
@@ -187,6 +189,7 @@ impl Default for AppSettings {
             secondary_device: None,
             stop_all_hotkey: Some("CommandOrControl+Shift+Backspace".into()),
             theme: "dark".into(),
+            locale: "en".into(),
             active_profile_id: None,
             onboarding_done: false,
             mic_mix_enabled: true,

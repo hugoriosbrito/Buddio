@@ -1,4 +1,5 @@
 import { CheckCircle, Info, Warning, X, XCircle } from "@phosphor-icons/react";
+import { useT } from "../../i18n";
 import {
   TOAST_DURATION_MS,
   useToastStore,
@@ -28,6 +29,7 @@ const barTones: Record<ToastKind, string> = {
 };
 
 export function ToastViewport() {
+  const t = useT();
   const items = useToastStore((s) => s.items);
   const dismiss = useToastStore((s) => s.dismiss);
 
@@ -67,7 +69,7 @@ export function ToastViewport() {
             </div>
             <button
               type="button"
-              aria-label="Fechar notificação"
+              aria-label={t("common.closeNotification")}
               className="rounded-md p-0.5 text-[var(--buddio-text-muted)] transition-colors duration-[var(--duration-hover)] hover:bg-[var(--buddio-surface-secondary)] hover:text-[var(--buddio-text)]"
               onClick={() => dismiss(item.id)}
             >

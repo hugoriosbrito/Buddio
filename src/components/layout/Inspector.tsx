@@ -12,6 +12,7 @@ import {
   setClipCollections,
   stopClip,
 } from "../../lib/api";
+import { localizeSeedName, useT, useLocale } from "../../i18n";
 import { useCollectionsStore } from "../../stores/collectionsStore";
 import { useLibraryStore } from "../../stores/libraryStore";
 import { usePlaybackStore } from "../../stores/playbackStore";
@@ -35,6 +36,8 @@ function formatDuration(ms: number): string {
 }
 
 export function Inspector() {
+  const t = useT();
+  const locale = useLocale();
   const view = useUiStore((s) => s.view);
   const clips = useLibraryStore((s) => s.clips);
   const selectedId = useLibraryStore((s) => s.selectedId);
@@ -55,7 +58,7 @@ export function Inspector() {
   const closeButton = (
     <button
       type="button"
-      aria-label="Fechar painel de detalhes"
+      aria-label={t("inspector.closeAria")}
       className="rounded-md p-1 text-[var(--buddio-text-muted)] transition-colors duration-[var(--duration-hover)] hover:bg-[var(--buddio-surface-secondary)] hover:text-[var(--buddio-text)]"
       onClick={() => setInspectorOpen(false)}
     >
@@ -84,14 +87,16 @@ export function Inspector() {
       <aside className="animate-panel-in flex w-[var(--inspector-w)] shrink-0 flex-col border-l border-[var(--buddio-border-subtle)] bg-[var(--buddio-window)] p-[var(--space-pad)]">
         <div className="flex items-center justify-between">
           <p className="text-[10px] font-semibold tracking-[0.08em] text-[var(--buddio-text-muted)]">
-            {view === "library" ? "ARQUIVO SELECIONADO" : "DETALHES DO SOM"}
+            {view === "library"
+              ? t("inspector.fileSelectedHeader")
+              : t("inspector.soundDetailsHeader")}
           </p>
           {closeButton}
         </div>
         <p className="mt-4 text-[13px] text-[var(--buddio-text-secondary)]">
           {view === "library"
-            ? "Selecione um arquivo na lista para ver detalhes."
-            : "Selecione um som para editar nome, atalho, volume e comportamento."}
+            ? t("inspector.selectFile")
+            : t("inspector.selectSound")}
         </p>
       </aside>
     );
@@ -101,7 +106,7 @@ export function Inspector() {
     return (
       <aside className="animate-panel-in flex w-[var(--inspector-w)] shrink-0 flex-col gap-[var(--space-gap)] overflow-y-auto border-l border-[var(--buddio-border-subtle)] bg-[var(--buddio-window)] p-[var(--space-pad)]">
         <div className="flex items-center justify-between">
-          <p className="text-[14px] font-bold">Arquivo selecionado</p>
+          <p className="text-[14px] font-bold">{t("inspector.fileSelected")}</p>
           {closeButton}
         </div>
         <div className="flex items-start gap-3">
@@ -126,10 +131,13 @@ export function Inspector() {
         </div>
         <Waveform peaks={clip.peaks} className="h-12" />
         <div className="flex flex-col gap-2 text-[13px]">
-          <MetaPair label="Formato" value={clip.ext.toUpperCase()} />
-          <MetaPair label="Taxa" value="48 kHz" />
-          <MetaPair label="Canais" value="Estéreo" />
-          <MetaPair label="Local" value="Biblioteca Buddio" />
+          <MetaPair label={t("inspector.format")} value={clip.ext.toUpperCase()} />
+          <MetaPair label={t("inspector.rate")} value="48 kHz" />
+          <MetaPair label={t("inspector.channels")} value={t("inspector.stereo")} />
+          <MetaPair
+            label={t("inspector.location")}
+            value={t("inspector.libraryLocation")}
+          />
         </div>
           <div className="mt-auto flex flex-col gap-2 pt-2">
           <Button
@@ -138,7 +146,7 @@ export function Inspector() {
             icon={<Plus size={16} weight="bold" />}
             onClick={() => setView("soundboard")}
           >
-            Adicionar ao soundboard
+            {t("inspector.addToSoundboard")}
           </Button>
           <Button
             variant="secondary"
@@ -146,13 +154,17 @@ export function Inspector() {
             icon={<ArrowSquareOut size={16} weight="bold" />}
             onClick={() => setEditorClipId(clip.id)}
           >
-            Abrir no editor
+            {t("inspector.openInEditor")}
           </Button>
           <Button variant="danger" className="w-full" onClick={() => void remove(clip.id)}>
-            Excluir
+            {t("common.delete")}
           </Button>
           <p className="pt-1 text-[11px] text-[var(--buddio-text-muted)]">
-            Última modificação: {new Date(clip.createdAt).toLocaleString("pt-BR")}
+            {t("inspector.lastModified", {
+              date: new Date(clip.createdAt).toLocaleString(
+                locale === "pt" ? "pt-BR" : "en-US",
+              ),
+            })}
           </p>
         </div>
       </aside>
@@ -162,18 +174,22 @@ export function Inspector() {
   const playing = playingIds.has(clip.id);
 
   const secondaryOptions = [
-    { value: "", label: "Não configurada" },
+    { value: "", label: t("common.notConfigured") },
     ...devices.map((d) => ({
       value: d.name,
-      label: d.isDefault ? `${d.name} (padrão)` : d.name,
+      label: d.isDefault
+        ? t("common.deviceDefaultSuffix", { name: d.name })
+        : d.name,
     })),
   ];
 
   const monitorOptions = [
-    { value: "", label: "Padrão do sistema" },
+    { value: "", label: t("common.systemDefault") },
     ...devices.map((d) => ({
       value: d.name,
-      label: d.isDefault ? `${d.name} (padrão)` : d.name,
+      label: d.isDefault
+        ? t("common.deviceDefaultSuffix", { name: d.name })
+        : d.name,
     })),
   ];
 
@@ -182,7 +198,7 @@ export function Inspector() {
       <div>
         <div className="flex items-center justify-between">
           <p className="text-[10px] font-semibold tracking-[0.08em] text-[var(--buddio-text-muted)]">
-            DETALHES DO SOM
+            {t("inspector.soundDetailsHeader")}
           </p>
           {closeButton}
         </div>
@@ -197,8 +213,8 @@ export function Inspector() {
               className="w-full rounded-[8px] bg-transparent px-1 py-0.5 text-[17px] font-bold text-[var(--buddio-text)] outline-none transition-[box-shadow] duration-[var(--duration-hover)] placeholder:text-[var(--buddio-text-muted)] focus-visible:bg-[var(--buddio-surface-secondary)] focus-visible:shadow-[0_0_0_2px_var(--buddio-brand-border)]"
               value={nameDraft}
               onChange={(e) => setNameDraft(e.target.value)}
-              aria-label="Nome do som"
-              placeholder="Nome do som"
+              aria-label={t("inspector.soundName")}
+              placeholder={t("inspector.soundName")}
             />
             <p className="mt-1 text-[11px] text-[var(--buddio-text-secondary)]">
               {formatDuration(clip.durationMs)} · {clip.ext.toUpperCase()}
@@ -209,54 +225,54 @@ export function Inspector() {
 
       <div>
         <p className="mb-2 text-[13px] text-[var(--buddio-text-secondary)]">
-          Atalho global
+          {t("inspector.globalHotkey")}
         </p>
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <HotkeyChip value={clip.hotkey} />
           {clip.hotkey ? (
             <span className="text-[11px] font-medium text-[var(--buddio-success)]">
-              Ativo em segundo plano
+              {t("inspector.hotkeyActive")}
             </span>
           ) : (
             <span className="text-[11px] text-[var(--buddio-warning)]">
-              Sem atalho. Capture Ctrl+Shift+tecla
+              {t("inspector.noHotkey")}
             </span>
           )}
         </div>
         <HotkeyRecorder
           value={clip.hotkey}
           onChange={(hotkey) => setHotkey(clip.id, hotkey)}
-          label="Capturar atalho"
+          label={t("inspector.captureHotkey")}
         />
       </div>
 
       <Slider
-        label="Volume"
+        label={t("inspector.volume")}
         value={clip.volume}
         onChange={(volume) => void updateSelected({ volume })}
       />
 
       <div className="flex flex-col gap-3">
         <p className="text-[13px] font-medium text-[var(--buddio-text-secondary)]">
-          Comportamento
+          {t("inspector.behavior")}
         </p>
         <Toggle
-          label="Reiniciar ao pressionar"
+          label={t("inspector.restartOnPress")}
           checked={clip.restartOnPress}
           onChange={(restartOnPress) => void updateSelected({ restartOnPress })}
         />
         <Toggle
-          label="Parar outros sons"
+          label={t("inspector.stopOthers")}
           checked={clip.stopOthers}
           onChange={(stopOthers) => void updateSelected({ stopOthers })}
         />
         <Toggle
-          label="Repetir em loop"
+          label={t("inspector.loop")}
           checked={clip.loopEnabled}
           onChange={(loopEnabled) => void updateSelected({ loopEnabled })}
         />
         <Toggle
-          label="Fixar no Mini"
+          label={t("inspector.pinMini")}
           checked={clip.pinned}
           onChange={(pinned) => void updateSelected({ pinned })}
         />
@@ -264,15 +280,15 @@ export function Inspector() {
 
       <div className="flex flex-col gap-3">
         <p className="text-[13px] font-medium text-[var(--buddio-text-secondary)]">
-          Saída
+          {t("inspector.output")}
         </p>
         <div className="flex flex-col gap-1.5">
           <span className="flex items-center gap-1.5 text-[12px] text-[var(--buddio-text-secondary)]">
             <Lightning size={12} weight="fill" className="text-[var(--buddio-brand)]" />
-            Microfone virtual
+            {t("routing.virtualMic")}
           </span>
           <Select
-            aria-label="Microfone virtual"
+            aria-label={t("routing.virtualMic")}
             value={settings.secondaryDevice ?? ""}
             options={secondaryOptions}
             onChange={(next) =>
@@ -287,10 +303,10 @@ export function Inspector() {
         <div className="flex flex-col gap-1.5">
           <span className="flex items-center gap-1.5 text-[12px] text-[var(--buddio-text-secondary)]">
             <SpeakerHigh size={12} weight="fill" />
-            Monitor
+            {t("routing.monitor")}
           </span>
           <Select
-            aria-label="Monitor"
+            aria-label={t("routing.monitor")}
             value={settings.monitorDevice ?? ""}
             options={monitorOptions}
             onChange={(next) =>
@@ -307,7 +323,7 @@ export function Inspector() {
       {collections.length > 0 ? (
         <div>
           <p className="mb-2 text-[13px] text-[var(--buddio-text-secondary)]">
-            Coleções
+            {t("inspector.collections")}
           </p>
           <div className="flex flex-wrap gap-1.5">
             {collections.map((c) => {
@@ -329,7 +345,7 @@ export function Inspector() {
                       : "border-[var(--buddio-border)] text-[var(--buddio-text-secondary)]",
                   ].join(" ")}
                 >
-                  {c.name}
+                  {localizeSeedName(c.name, t)}
                 </button>
               );
             })}
@@ -344,7 +360,7 @@ export function Inspector() {
           icon={<ArrowsLeftRight size={16} weight="bold" />}
           onClick={() => setDiagnosticsOpen(true)}
         >
-          Testar roteamento
+          {t("routing.testRouting")}
         </Button>
         <div className="grid grid-cols-2 gap-2">
           <Button
@@ -358,14 +374,14 @@ export function Inspector() {
               }
             }}
           >
-            {playing ? "Parar" : "Tocar"}
+            {playing ? t("inspector.stop") : t("inspector.play")}
           </Button>
           <Button variant="secondary" onClick={() => setEditorClipId(clip.id)}>
-            Editor
+            {t("inspector.editor")}
           </Button>
         </div>
         <Button variant="danger" onClick={() => void remove(clip.id)}>
-          Excluir
+          {t("common.delete")}
         </Button>
       </div>
     </aside>

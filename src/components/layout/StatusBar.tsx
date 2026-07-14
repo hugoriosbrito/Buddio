@@ -1,47 +1,52 @@
 import { Headphones, House, Microphone, User } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
+import { localizeSeedName, useT } from "../../i18n";
 import { useProfilesStore } from "../../stores/profilesStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 
 export function StatusBar() {
+  const t = useT();
   const settings = useSettingsStore((s) => s.settings);
   const profiles = useProfilesStore((s) => s.profiles);
   const active =
     profiles.find((p) => p.id === settings.activeProfileId) ??
     profiles.find((p) => p.isDefault);
 
-  const secondary = settings.secondaryDevice ?? "Não configurada";
+  const secondary = settings.secondaryDevice ?? t("common.notConfigured");
   const monitor = settings.monitorEnabled
-    ? (settings.monitorDevice ?? "Padrão do sistema")
-    : "Desligado";
+    ? (settings.monitorDevice ?? t("common.systemDefault"))
+    : t("common.off");
+
+  const micLabel =
+    settings.micRouteMode === "soundOnly"
+      ? t("settings.micMode.soundOnly")
+      : settings.micRouteMode === "ducking"
+        ? t("settings.micMode.ducking")
+        : t("profiles.micMode.mix");
 
   return (
     <footer className="flex h-[var(--status-h)] shrink-0 items-center gap-5 border-t border-[var(--buddio-border-subtle)] bg-[var(--buddio-window)] px-[var(--space-pad)] text-[12px]">
       <StatusItem
         icon={<User size={14} weight="bold" />}
-        label="Perfil"
-        value={active?.name ?? "Padrão"}
+        label={t("status.profile")}
+        value={
+          active ? localizeSeedName(active.name, t) : t("common.default")
+        }
       />
       <StatusItem
         icon={<Microphone size={14} weight="bold" />}
-        label="Saída"
+        label={t("status.output")}
         value={secondary}
       />
       <StatusItem
         icon={<House size={14} weight="bold" />}
-        label="Monitor"
+        label={t("status.monitor")}
         value={monitor}
       />
       <StatusItem
         icon={<Headphones size={14} weight="bold" />}
-        label="Mic"
-        value={
-          settings.micRouteMode === "soundOnly"
-            ? "Só som"
-            : settings.micRouteMode === "ducking"
-              ? "Ducking"
-              : "Misturar"
-        }
+        label={t("status.mic")}
+        value={micLabel}
         dot={settings.micRouteMode !== "soundOnly"}
       />
     </footer>

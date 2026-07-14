@@ -272,7 +272,7 @@ impl EngineState {
                     warn!("failed to attach mic mix sink on secondary");
                     capture.stop();
                     self.emit(AudioEvent::DeviceWarning {
-                        message: "não foi possível misturar o microfone na saída virtual".into(),
+                        message: "could not mix the microphone onto the virtual output".into(),
                     });
                     return;
                 }
@@ -289,7 +289,7 @@ impl EngineState {
             Err(err) => {
                 warn!(error = %err, "mic mix capture failed");
                 self.emit(AudioEvent::DeviceWarning {
-                    message: format!("microfone para mix: {err}"),
+                    message: format!("microphone for mix: {err}"),
                 });
             }
         }
@@ -662,7 +662,7 @@ fn open_output_path(name: Option<&str>) -> Result<OutputPath, String> {
 fn map_open_stream_error(raw: &str) -> String {
     // WASAPI AUDCLNT_E_DEVICE_IN_USE — classic when both VB-CABLE pins are open.
     if raw.contains("0x8889000A") || raw.to_ascii_lowercase().contains("device_in_use") {
-        return "open stream: dispositivo de áudio em uso (0x8889000A). No Windows 10/11 o VB-CABLE tem dois pins (Alto-falantes e CABLE In 16 Ch) que não podem abrir ao mesmo tempo — deixe o monitor nos fones/caixas reais e a saída da call só no CABLE Input.".into();
+        return "open stream: audio device in use (0x8889000A). On Windows 10/11 VB-CABLE exposes two pins (Speakers and CABLE In 16 Ch) that cannot open at the same time — keep the monitor on real headphones/speakers and the call output only on CABLE Input.".into();
     }
     format!("open stream: {raw}")
 }

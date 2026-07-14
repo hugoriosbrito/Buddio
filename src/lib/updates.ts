@@ -1,4 +1,5 @@
 import packageJson from "../../package.json";
+import { t } from "../i18n";
 
 /** Repositório GitHub para checagem de releases. */
 export const BUDDIO_GITHUB_REPO =
@@ -127,7 +128,7 @@ export async function checkForUpdates(
     return {
       status: "unavailable",
       current: currentVersion,
-      reason: "Repositório GitHub não configurado.",
+      reason: t("updates.repoNotConfigured"),
     };
   }
 
@@ -143,7 +144,7 @@ export async function checkForUpdates(
       return {
         status: "unavailable",
         current: currentVersion,
-        reason: "Nenhum release encontrado neste repositório.",
+        reason: t("updates.noReleaseFound"),
       };
     }
 
@@ -151,7 +152,7 @@ export async function checkForUpdates(
       return {
         status: "unavailable",
         current: currentVersion,
-        reason: `Falha ao consultar GitHub (${res.status}).`,
+        reason: t("updates.githubStatus", { status: res.status }),
       };
     }
 
@@ -160,7 +161,7 @@ export async function checkForUpdates(
       return {
         status: "unavailable",
         current: currentVersion,
-        reason: "Resposta de release inválida.",
+        reason: t("updates.invalidRelease"),
       };
     }
 
@@ -169,7 +170,7 @@ export async function checkForUpdates(
       return {
         status: "unavailable",
         current: currentVersion,
-        reason: "Nenhum release publicado neste repositório.",
+        reason: t("updates.noPublishedRelease"),
       };
     }
 
@@ -196,7 +197,7 @@ export async function checkForUpdates(
     return {
       status: "unavailable",
       current: currentVersion,
-      reason: "Sem conexão ou GitHub indisponível.",
+      reason: t("updates.noConnection"),
     };
   }
 }

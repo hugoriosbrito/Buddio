@@ -1,6 +1,7 @@
 import { X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useT } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { Button } from "./Button";
 
@@ -27,6 +28,7 @@ export function Modal({
   className,
   closeOnEsc = true,
 }: Props) {
+  const t = useT();
   const panelRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(open);
 
@@ -118,7 +120,7 @@ export function Modal({
           <Button
             variant="ghost"
             className="h-8 w-8 px-0"
-            aria-label="Fechar"
+            aria-label={t("common.close")}
             onClick={onClose}
             icon={<X size={16} />}
           />

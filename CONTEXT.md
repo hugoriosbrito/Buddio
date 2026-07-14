@@ -46,6 +46,19 @@ voice-activity detection open — a one-shot beep only wakes the gate for ~1s.
 Discord **noise suppression** (especially Krisp) still often destroys music;
 users should disable NS/echo cancellation for soundboard use.
 
+## Locale
+
+UI language defaults to **English** (`en`). Switch in **Settings → Appearance →
+Language** (`en` / `pt`). Catalogs live in `src/i18n/{en,pt}.ts`; `useT()` /
+`translate()` interpolate `{var}` placeholders.
+
+## Updates
+
+On launch (after onboarding), Buddio checks GitHub releases quietly. If a newer
+build exists, an in-app modal prompts the user and a bell + red badge stays in
+the titlebar until updated. “Later” dismisses the modal for that version this
+session; the badge remains so the release can be reopened.
+
 ## Secondary / virtual mic
 
 The playback endpoint Buddio uses for calls (typically VB-CABLE **CABLE Input**).

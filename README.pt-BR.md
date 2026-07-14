@@ -42,16 +42,22 @@ segundo".
 
 ## ✨ Por que você vai gostar
 
-- 🎧 **Arraste e já era**: solte arquivos WAV, MP3, FLAC, OGG ou M4A, ou aponte o Buddio pra uma pasta e deixe ele monitorar sozinho
-- ⌨️ **Atalhos globais**: dispare sons mesmo com um jogo ou uma chamada em foco
+- 🎧 **Arraste e já era**: solte arquivos WAV, MP3, FLAC, OGG ou M4A — revise a importação antes de confirmar, ou aponte o Buddio pra uma pasta e deixe ele monitorar sozinho
+- ⌨️ **Atalhos globais**: teclado *e* mouse disparam sons mesmo com um jogo ou uma chamada em foco; associe por clipe ou use atalhos por índice (`Ctrl+Alt+N` / `Alt+NumpadN`) pro N-ésimo som da coleção ativa
 - 🔊 **Duas saídas ao mesmo tempo**: ouça você mesmo *e* mande o som direto pro microfone ou chamada (funciona muito bem com VB-CABLE)
+- 🎙️ **Modos de microfone**: Mix (voz + board), Ducking (voz baixa enquanto o clipe toca) ou Só som (mute a voz no cabo até o clipe terminar)
 - ⚡ **Reprodução instantânea**: os clipes ficam pré-carregados em memória, então não existe atraso entre apertar o atalho e o som sair
+- 📊 **Normalização de loudness**: equaliza o volume dos clipes ao nível da sua voz calibrada na importação, com ganho manual opcional
+- 🔔 **VAD keepalive**: um pulso suave de formantes mantém o voice-activity do Discord/Zoom aberto durante o clipe inteiro (desative supressão de ruído / Krisp nas calls pra música)
 - 🗂️ **Coleções e busca**: organize os sons em "Streaming", "Jogos", "Chamadas"... e encontre qualquer um com `Ctrl/Cmd + K`
 - 🎚️ **Editor de áudio embutido**: corte, aplique fade, ajuste o ganho e configure loop, tudo sem alterar o arquivo original
-- 👤 **Perfis**: troque dispositivos, volumes e a coleção favorita em um único clique
+- 👤 **Perfis**: troque dispositivos, volumes, modo de microfone e a coleção favorita em um único clique
 - 🧭 **Roteamento que você realmente enxerga**: um diagrama ao vivo mostra exatamente pra onde seu áudio está indo, com correção em um clique quando algo falha
+- 🩺 **Diagnósticos**: valide CABLE, ducking e normalização pra saber se a rota está saudável antes da live
 - 🪟 **Buddio Mini**: um painel aconchegante na bandeja do sistema pra disparar seus sons fixados sem abrir a janela completa, com um modo Ultra Compact pra quatro favoritos
 - 🚀 **Configuração guiada**: um assistente simpático no primeiro uso te leva por saída, microfone, roteamento, primeiro som e primeiro atalho
+- 🌐 **Inglês e português**: o idioma da UI começa em inglês; troque quando quiser em Configurações → Aparência
+- ⬆️ **Checagem de atualizações**: na abertura, o Buddio consulta os GitHub Releases em silêncio e avisa quando há versão nova
 - 🌓 **Temas claro e escuro** que parecem de verdade desenhados, não só invertidos
 - 🔒 **Privado por padrão**: sua biblioteca vive num arquivo local; o áudio nunca sai do seu computador
 
@@ -71,9 +77,10 @@ segundo".
 
 ## 🧭 Status
 
-O Buddio é um projeto estável no Windows (v1.0), construído e usado no dia a dia
-pelo próprio autor. O soundboard principal, os atalhos, o roteamento, os perfis e
-o Buddio Mini já funcionam. No Windows, o instalador NSIS (`.exe`) também instala o
+O Buddio **1.0** está em release-candidate no Windows (`1.0.0-rc*`), construído e
+usado no dia a dia pelo próprio autor. O soundboard, os atalhos, o roteamento de
+mic, a normalização, os diagnósticos, os perfis, i18n e o Buddio Mini já
+funcionam. No Windows, o instalador NSIS (`.exe`) também instala o
 [VB-CABLE](https://vb-cable.com) quando falta e o remove na desinstalação
 somente se o Buddio tiver sido quem instalou. O SmartScreen pode avisar até
 haver assinatura de código — veja [`docs/release.md`](docs/release.md).

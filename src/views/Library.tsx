@@ -5,6 +5,7 @@ import { ImportDropzone } from "../components/ImportDropzone";
 import { Button } from "../components/ui/Button";
 import { HotkeyChip } from "../components/ui/HotkeyChip";
 import { Search } from "../components/ui/Search";
+import { localizeSeedName, useT } from "../i18n";
 import { cn } from "../lib/cn";
 import type { ClipDto, WatchedFolderDto } from "../lib/api";
 import {
@@ -34,6 +35,7 @@ function folderLabel(path: string): string {
 }
 
 export function LibraryView() {
+  const t = useT();
   const query = useLibraryStore((s) => s.query);
   const setQuery = useLibraryStore((s) => s.setQuery);
   const importFiles = useLibraryStore((s) => s.importFiles);
@@ -93,7 +95,7 @@ export function LibraryView() {
       await addWatchedFolder(null, collectionId);
       await refreshWatched();
       await hydrate();
-      setNotice("Pasta monitorada adicionada.");
+      setNotice(t("library.watchedAdded"));
     } catch (err) {
       useLibraryStore.setState({ error: String(err) });
     } finally {
@@ -129,14 +131,14 @@ export function LibraryView() {
     <div className="flex h-full flex-col gap-[var(--space-gap)] overflow-hidden px-[var(--space-pad-x)] py-[var(--space-pad-y)]">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-[length:var(--heading-size)] font-bold leading-none">Biblioteca</h1>
+          <h1 className="text-[length:var(--heading-size)] font-bold leading-none">{t("library.title")}</h1>
           <p className="mt-2 text-[13px] text-[var(--buddio-text-secondary)]">
-            Organize, encontre e prepare seus arquivos de áudio.
+            {t("library.subtitle")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Search
-            placeholder="Buscar"
+            placeholder={t("common.search")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onClear={() => setQuery("")}
@@ -147,28 +149,28 @@ export function LibraryView() {
             icon={<FolderPlus size={16} weight="bold" />}
             onClick={() => void importFolder(null)}
           >
-            Importar pasta
+            {t("library.importFolder")}
           </Button>
           <ImportDropzone
             onImport={importFiles}
             compact
-            label="Importar arquivos"
+            label={t("library.importFiles")}
           />
         </div>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Todos os sons" value={clips.length} />
-        <StatCard label="Com atalho" value={withHotkey} />
-        <StatCard label="Sem atalho" value={withoutHotkey} />
+        <StatCard label={t("library.allSounds")} value={clips.length} />
+        <StatCard label={t("library.withHotkey")} value={withHotkey} />
+        <StatCard label={t("library.withoutHotkey")} value={withoutHotkey} />
       </div>
 
       <section className="rounded-[var(--radius-card)] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-[13px] font-semibold">Pastas monitoradas</h2>
+            <h2 className="text-[13px] font-semibold">{t("library.watchedFolders")}</h2>
             <p className="mt-0.5 text-[12px] text-[var(--buddio-text-secondary)]">
-              Novos áudios nessas pastas entram na biblioteca automaticamente.
+              {t("library.watchedHint")}
             </p>
           </div>
           <Button
@@ -177,12 +179,12 @@ export function LibraryView() {
             loading={watchedBusy}
             onClick={() => void onAddWatched()}
           >
-            Adicionar pasta
+            {t("library.addFolder")}
           </Button>
         </div>
         {watched.length === 0 ? (
           <p className="mt-3 text-[12px] text-[var(--buddio-text-muted)]">
-            Nenhuma pasta monitorada ainda.
+            {t("library.noWatchedFolders")}
           </p>
         ) : (
           <ul className="mt-3 flex flex-col gap-2">
@@ -196,7 +198,7 @@ export function LibraryView() {
                     {folderLabel(folder.path)}
                     {!folder.enabled ? (
                       <span className="ml-2 text-[11px] font-medium text-[var(--buddio-text-muted)]">
-                        pausada
+                        {t("library.paused")}
                       </span>
                     ) : null}
                   </p>
@@ -210,7 +212,7 @@ export function LibraryView() {
                     disabled={watchedBusy}
                     onClick={() => void onToggleWatched(folder)}
                   >
-                    {folder.enabled ? "Pausar" : "Ativar"}
+                    {folder.enabled ? t("library.pause") : t("library.enable")}
                   </Button>
                   <Button
                     variant="danger"
@@ -218,7 +220,7 @@ export function LibraryView() {
                     disabled={watchedBusy}
                     onClick={() => void onRemoveWatched(folder.id)}
                   >
-                    Remover
+                    {t("library.remove")}
                   </Button>
                 </div>
               </li>
@@ -232,7 +234,7 @@ export function LibraryView() {
           active={collectionId === null}
           onClick={() => setSelectedCollectionId(null)}
         >
-          Todos
+          {t("library.all")}
         </FilterChip>
         {collections.map((c) => {
           const count = clips.filter((clip) =>
@@ -244,7 +246,7 @@ export function LibraryView() {
               active={collectionId === c.id}
               onClick={() => setSelectedCollectionId(c.id)}
             >
-              {c.name}
+              {localizeSeedName(c.name, t)}
               <span className="ml-1.5 tabular-nums opacity-70">{count}</span>
             </FilterChip>
           );
@@ -255,7 +257,7 @@ export function LibraryView() {
         <p role="alert" className="text-[13px] text-[var(--buddio-danger)]">
           {error}{" "}
           <button type="button" className="underline" onClick={clearError}>
-            Fechar
+            {t("common.close")}
           </button>
         </p>
       ) : null}
@@ -270,7 +272,7 @@ export function LibraryView() {
             className="underline"
             onClick={() => setNotice(null)}
           >
-            Fechar
+            {t("common.close")}
           </button>
         </p>
       ) : null}
@@ -278,34 +280,33 @@ export function LibraryView() {
       <div className="min-h-0 flex-1 overflow-hidden">
         {loading && clips.length === 0 ? (
           <p className="text-[13px] text-[var(--buddio-text-secondary)]">
-            Carregando biblioteca…
+            {t("library.loading")}
           </p>
         ) : filtered.length === 0 ? (
           <div className="flex min-h-[16rem] flex-col items-center justify-center rounded-[var(--radius-card)] border border-dashed border-[var(--buddio-border)] px-6 text-center">
             {collectionId && clips.length > 0 ? (
               <>
                 <p className="text-[22px] font-bold">
-                  Coleção {activeCollection?.name ?? ""} vazia
+                  {t("library.emptyCollection", {
+                    name: activeCollection?.name ?? "",
+                  })}
                 </p>
                 <p className="mt-2 max-w-sm text-[13px] text-[var(--buddio-text-secondary)]">
-                  Você tem {clips.length} som
-                  {clips.length === 1 ? "" : "s"} na biblioteca. Adicione sons a
-                  esta coleção na revisão de importação ou no inspetor, ou veja
-                  todos.
+                  {t("library.emptyCollectionHint", { count: clips.length })}
                 </p>
                 <Button
                   variant="primary"
                   className="mt-4"
                   onClick={() => setSelectedCollectionId(null)}
                 >
-                  Ver todos os áudios
+                  {t("library.viewAll")}
                 </Button>
               </>
             ) : (
               <>
-                <p className="text-[22px] font-bold">Biblioteca vazia</p>
+                <p className="text-[22px] font-bold">{t("library.emptyTitle")}</p>
                 <p className="mt-2 max-w-sm text-[13px] text-[var(--buddio-text-secondary)]">
-                  Arraste arquivos de áudio ou use Importar para começar.
+                  {t("library.emptyHint")}
                 </p>
               </>
             )}
@@ -316,10 +317,10 @@ export function LibraryView() {
               <table className="w-full border-collapse text-left text-[13px]">
                 <thead className="sticky top-0 z-[1] bg-[var(--buddio-surface)]">
                   <tr className="border-b border-[var(--buddio-border-subtle)] text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--buddio-text-muted)]">
-                    <th className="px-4 py-3 font-semibold">Nome</th>
-                    <th className="px-3 py-3 font-semibold">Duração</th>
-                    <th className="px-3 py-3 font-semibold">Atalho</th>
-                    <th className="px-3 py-3 font-semibold">Coleção</th>
+                    <th className="px-4 py-3 font-semibold">{t("library.name")}</th>
+                    <th className="px-3 py-3 font-semibold">{t("library.duration")}</th>
+                    <th className="px-3 py-3 font-semibold">{t("library.hotkey")}</th>
+                    <th className="px-3 py-3 font-semibold">{t("library.collection")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -343,15 +344,14 @@ export function LibraryView() {
             {selected ? (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] px-4 py-3">
                 <p className="min-w-0 truncate text-[13px]">
-                  Selecionado:{" "}
-                  <span className="font-semibold">{selected.name}</span>
+                  {t("library.selected", { name: selected.name })}
                 </p>
                 <Button
                   variant="danger"
                   icon={<Trash size={16} weight="bold" />}
                   onClick={() => void remove(selected.id)}
                 >
-                  Excluir
+                  {t("common.delete")}
                 </Button>
               </div>
             ) : null}

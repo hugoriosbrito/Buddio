@@ -1,5 +1,6 @@
 import { Check, WarningCircle } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
+import { localizeSeedName, useT } from "../i18n";
 import * as api from "../lib/api";
 import type { ClipDto, ImportResult } from "../lib/api";
 import { useCollectionsStore } from "../stores/collectionsStore";
@@ -19,6 +20,7 @@ type Draft = {
 };
 
 export function ImportReviewModal() {
+  const t = useT();
   const open = useUiStore((s) => s.importReviewOpen);
   const setOpen = useUiStore((s) => s.setImportReviewOpen);
   const review = useUiStore((s) => s.importReview);
@@ -194,14 +196,14 @@ export function ImportReviewModal() {
   return (
     <Modal
       open={open}
-      title="Revisar importação"
-      description="Confirme nome, atalho e coleção antes de concluir."
+      title={t("import.title")}
+      description={t("import.description")}
       onClose={close}
       className="max-w-[920px]"
       footer={
         <>
           <Button variant="secondary" onClick={close} disabled={saving}>
-            Depois
+            {t("import.later")}
           </Button>
           <Button
             variant="primary"
@@ -209,7 +211,7 @@ export function ImportReviewModal() {
             onClick={() => void finish()}
             disabled={saving || readyCount === 0}
           >
-            {saving ? "Salvando…" : "Concluir importação"}
+            {saving ? t("import.saving") : t("import.finish")}
           </Button>
         </>
       }
@@ -217,22 +219,25 @@ export function ImportReviewModal() {
       <div className="grid gap-4 md:grid-cols-[1.4fr_0.9fr]">
         <div className="rounded-[16px] border border-[var(--buddio-border)] bg-[var(--buddio-window)] p-4">
           <p className="text-[14px] font-semibold">
-            {imported.length} arquivo{imported.length === 1 ? "" : "s"} importado
-            {imported.length === 1 ? "" : "s"}
+            {imported.length === 1
+              ? t("import.filesImportedOne", { count: imported.length })
+              : t("import.filesImportedMany", { count: imported.length })}
           </p>
           <p className="mt-1 text-[12px] text-[var(--buddio-text-secondary)]">
-            {readyCount} prontos
-            {attention > 0 ? ` · ${attention} precisam de atenção` : ""}
+            {t("import.readyCount", { count: readyCount })}
+            {attention > 0
+              ? t("import.needAttention", { count: attention })
+              : ""}
           </p>
 
           <div className="mt-3 rounded-[12px] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] px-3 py-2">
             <Toggle
-              label="Atribuir atalhos automaticamente"
+              label={t("import.autoHotkeys")}
               checked={autoHotkeys}
               onChange={setAutoHotkeys}
             />
             <p className="mt-1 text-[11px] text-[var(--buddio-text-muted)]">
-              Sugere atalhos livres (Ctrl+Alt+N após F1–F12, que o Windows costuma rejeitar).
+              {t("import.autoHotkeysHint")}
             </p>
           </div>
 
@@ -243,6 +248,7 @@ export function ImportReviewModal() {
                 clip={clip}
                 active={clip.id === activeId}
                 name={drafts[clip.id]?.name ?? clip.name}
+                readyLabel={t("import.ready")}
                 onSelect={() => setActiveId(clip.id)}
               />
             ))}
@@ -256,7 +262,7 @@ export function ImportReviewModal() {
                   className="flex items-center gap-2 text-[12px] text-[var(--buddio-warning)]"
                 >
                   <WarningCircle size={14} weight="fill" />
-                  Duplicado ignorado: {name}
+                  {t("import.duplicate", { name })}
                 </p>
               ))}
               {review.errors.map((msg) => (
@@ -274,17 +280,19 @@ export function ImportReviewModal() {
 
         <div className="rounded-[16px] border border-[var(--buddio-border)] bg-[var(--buddio-window)] p-4">
           <p className="text-[10px] font-semibold tracking-[0.08em] text-[var(--buddio-text-muted)]">
-            RESUMO
+            {t("import.summary")}
           </p>
           <p className="mt-3 text-[34px] font-bold leading-none">{readyCount}</p>
           <p className="mt-1 text-[13px] text-[var(--buddio-text-secondary)]">
-            arquivos prontos
+            {t("import.filesReady")}
           </p>
 
           {active && activeDraft ? (
             <div className="mt-5 flex flex-col gap-3">
               <label className="flex flex-col gap-1.5 text-[13px]">
-                <span className="text-[var(--buddio-text-secondary)]">Nome</span>
+                <span className="text-[var(--buddio-text-secondary)]">
+                  {t("library.name")}
+                </span>
                 <input
                   className="h-10 rounded-[12px] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] px-3 outline-none focus:border-[var(--buddio-brand)]"
                   value={activeDraft.name}
@@ -298,7 +306,7 @@ export function ImportReviewModal() {
               </label>
 
               <HotkeyRecorder
-                label="Atalho global"
+                label={t("import.globalHotkey")}
                 value={activeDraft.hotkey}
                 onChange={(hotkey) =>
                   setDrafts((prev) => ({
@@ -310,11 +318,11 @@ export function ImportReviewModal() {
 
               <label className="flex flex-col gap-1.5 text-[13px]">
                 <span className="text-[var(--buddio-text-secondary)]">
-                  URL do ícone
+                  {t("import.iconLabel")}
                 </span>
                 <input
                   className="h-10 rounded-[12px] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] px-3 outline-none focus:border-[var(--buddio-brand)]"
-                  placeholder="https://… ou deixe vazio"
+                  placeholder={t("import.iconUrl")}
                   value={activeDraft.iconUrl}
                   onChange={(e) =>
                     setDrafts((prev) => ({
@@ -338,20 +346,22 @@ export function ImportReviewModal() {
                       }}
                     />
                     <span className="text-[11px] text-[var(--buddio-text-muted)]">
-                      Prévia do ícone (clique no ícone toca o som)
+                      {t("import.iconPreview")}
                     </span>
                   </span>
                 ) : null}
               </label>
 
               <div className="flex flex-col gap-1.5 text-[13px]">
-                <span className="text-[var(--buddio-text-secondary)]">Coleção</span>
+                <span className="text-[var(--buddio-text-secondary)]">
+                  {t("import.collection")}
+                </span>
                 <Select
-                  aria-label="Coleção"
+                  aria-label={t("import.collection")}
                   value={activeDraft.collectionId ?? ""}
                   options={[
-                    { value: "", label: "Nenhuma" },
-                    ...collections.map((c) => ({ value: c.id, label: c.name })),
+                    { value: "", label: t("common.none") },
+                    ...collections.map((c) => ({ value: c.id, label: localizeSeedName(c.name, t) })),
                   ]}
                   onChange={(next) =>
                     setDrafts((prev) => ({
@@ -367,7 +377,7 @@ export function ImportReviewModal() {
             </div>
           ) : (
             <p className="mt-5 text-[13px] text-[var(--buddio-text-secondary)]">
-              Nenhum arquivo novo para revisar.
+              {t("import.noneToReview")}
             </p>
           )}
         </div>
@@ -386,11 +396,13 @@ function ImportRow({
   clip,
   active,
   name,
+  readyLabel,
   onSelect,
 }: {
   clip: ClipDto;
   active: boolean;
   name: string;
+  readyLabel: string;
   onSelect: () => void;
 }) {
   return (
@@ -411,7 +423,7 @@ function ImportRow({
         </p>
       </div>
       <span className="shrink-0 rounded-full bg-[color-mix(in_oklab,var(--buddio-success)_18%,transparent)] px-2.5 py-1 text-[11px] font-semibold text-[var(--buddio-text)]">
-        Pronto
+        {readyLabel}
       </span>
     </button>
   );

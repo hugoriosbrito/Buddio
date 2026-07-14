@@ -1,5 +1,6 @@
 import { Keyboard } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useT } from "../i18n";
 import { resumeHotkeys, suspendHotkeys } from "../lib/api";
 import { Button } from "./ui/Button";
 import { HotkeyChip } from "./ui/HotkeyChip";
@@ -96,7 +97,9 @@ function formatMouseChord(e: PointerEvent): string | null {
   return parts.join("+");
 }
 
-export function HotkeyRecorder({ value, onChange, label = "Atalho" }: Props) {
+export function HotkeyRecorder({ value, onChange, label }: Props) {
+  const t = useT();
+  const resolvedLabel = label ?? t("hotkey.label");
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const armed = useRef(false);
@@ -173,9 +176,7 @@ export function HotkeyRecorder({ value, onChange, label = "Atalho" }: Props) {
       // Prefer Ctrl/Alt/Shift chords.
       const hasModifier = e.ctrlKey || e.metaKey || e.altKey || e.shiftKey;
       if (!hasModifier) {
-        setError(
-          "Use Ctrl, Alt ou Shift + tecla. Teclas sozinhas (ex.: F12) costumam falhar no Windows.",
-        );
+        setError(t("hotkey.modifierRequired"));
         return;
       }
 
@@ -191,9 +192,7 @@ export function HotkeyRecorder({ value, onChange, label = "Atalho" }: Props) {
         if (e.button >= 1 && !(e.ctrlKey || e.metaKey || e.altKey || e.shiftKey)) {
           e.preventDefault();
           e.stopPropagation();
-          setError(
-            "Use Ctrl/Alt/Shift + botão do mouse (ex.: Ctrl+Mouse4). Mouse sozinho não é capturado.",
-          );
+          setError(t("hotkey.mouseHint"));
         }
         return;
       }
@@ -208,21 +207,21 @@ export function HotkeyRecorder({ value, onChange, label = "Atalho" }: Props) {
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("pointerdown", onPointerDown, true);
     };
-  }, [recording, onChange, stopRecording]);
+  }, [recording, onChange, stopRecording, t]);
 
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-[11px] font-semibold tracking-[0.06em] text-[var(--buddio-text-muted)]">
-        {label}
+        {resolvedLabel}
       </span>
       <div className="flex items-center gap-2">
         <HotkeyChip value={value} />
         <Button variant="secondary" onClick={() => void startRecording()}>
-          Capturar
+          {t("hotkey.capture")}
         </Button>
         {value ? (
           <Button variant="ghost" onClick={() => void onChange(null)}>
-            Limpar
+            {t("hotkey.clear")}
           </Button>
         ) : null}
       </div>
@@ -232,8 +231,8 @@ export function HotkeyRecorder({ value, onChange, label = "Atalho" }: Props) {
 
       <Modal
         open={recording}
-        title="Capturar atalho"
-        description="Use Ctrl/Alt/Shift + tecla ou botão do mouse (ex.: Ctrl+Shift+1, Ctrl+Mouse4). Esc limpa."
+        title={t("hotkey.captureTitle")}
+        description={t("hotkey.captureHint")}
         onClose={() => void stopRecording()}
         closeOnEsc={false}
       >
@@ -241,13 +240,12 @@ export function HotkeyRecorder({ value, onChange, label = "Atalho" }: Props) {
           <div className="flex size-16 items-center justify-center rounded-full bg-[var(--buddio-brand-soft)] text-[var(--buddio-brand)] animate-pulse">
             <Keyboard size={28} weight="bold" />
           </div>
-          <p className="text-[14px] font-semibold">Aguardando combinação…</p>
+          <p className="text-[14px] font-semibold">{t("hotkey.waiting")}</p>
           <p className="max-w-sm text-center text-[12px] text-[var(--buddio-text-secondary)]">
-            Teclas sozinhas como F12 não funcionam bem no Windows. Botões do
-            mouse (Ctrl/Alt/Shift + botão lateral) também funcionam globalmente.
+            {t("hotkey.waitingBody")}
           </p>
           <Button variant="secondary" onClick={() => void stopRecording()}>
-            Cancelar
+            {t("common.cancel")}
           </Button>
         </div>
       </Modal>

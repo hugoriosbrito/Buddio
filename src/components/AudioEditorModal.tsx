@@ -1,4 +1,5 @@
 import { useEffect, useState, type ChangeEvent } from "react";
+import { useT } from "../i18n";
 import { Button } from "./ui/Button";
 import { Modal } from "./ui/Modal";
 import { Waveform } from "./Waveform";
@@ -12,6 +13,7 @@ function clamp(n: number, min: number, max: number): number {
 }
 
 export function AudioEditorModal() {
+  const t = useT();
   const editorClipId = useUiStore((s) => s.editorClipId);
   const setEditorClipId = useUiStore((s) => s.setEditorClipId);
   const clips = useLibraryStore((s) => s.clips);
@@ -47,12 +49,12 @@ export function AudioEditorModal() {
     return (
       <Modal
         open
-        title="Editor de áudio"
-        description="O som selecionado não foi encontrado."
+        title={t("editor.title")}
+        description={t("editor.missing")}
         onClose={() => setEditorClipId(null)}
       >
         <p className="text-[13px] text-[var(--buddio-text-secondary)]">
-          Feche e selecione outro clip no soundboard.
+          {t("editor.closeReselect")}
         </p>
       </Modal>
     );
@@ -81,14 +83,14 @@ export function AudioEditorModal() {
           .clips.map((c) => (c.id === updated.id ? updated : c)),
       });
       select(updated.id);
-      pushToast({ kind: "success", message: "Edições salvas." });
+      pushToast({ kind: "success", message: t("editor.saved") });
       setEditorClipId(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
       pushToast({
         kind: "error",
-        message: `Falha ao salvar: ${message}`,
+        message: t("editor.saveFailed", { message }),
         sticky: true,
       });
     } finally {
@@ -112,21 +114,21 @@ export function AudioEditorModal() {
   return (
     <Modal
       open={open}
-      title="Editor de áudio"
-      description="Ajuste o som sem alterar o arquivo original."
+      title={t("editor.title")}
+      description={t("editor.description")}
       onClose={() => setEditorClipId(null)}
       className="max-w-[720px]"
       footer={
         <>
           <Button variant="secondary" onClick={() => setEditorClipId(null)}>
-            Descartar
+            {t("editor.discard")}
           </Button>
           <Button
             variant="primary"
             disabled={saving}
             onClick={() => void save()}
           >
-            {saving ? "Salvando…" : "Salvar alterações"}
+            {saving ? t("editor.saving") : t("editor.save")}
           </Button>
         </>
       }
@@ -137,7 +139,7 @@ export function AudioEditorModal() {
             className="w-full rounded-[8px] bg-transparent px-1 py-0.5 text-[17px] font-bold outline-none focus-visible:shadow-[0_0_0_2px_var(--buddio-brand-border)]"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            aria-label="Nome do som"
+            aria-label={t("inspector.soundName")}
           />
           <p className="mt-1 text-[12px] text-[var(--buddio-text-secondary)]">
             {clip.ext.toUpperCase()} · {(clip.durationMs / 1000).toFixed(1)}s
@@ -163,13 +165,13 @@ export function AudioEditorModal() {
             />
           </div>
           <p className="mt-2 text-[11px] text-[var(--buddio-text-muted)]">
-            Arraste as barras na onda para definir início e fim do trim.
+            {t("editor.trimHint")}
           </p>
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <NumberField
-            label="Fade in"
+            label={t("editor.fadeIn")}
             unit="ms"
             value={fadeIn}
             min={0}
@@ -178,7 +180,7 @@ export function AudioEditorModal() {
             onChange={setFadeIn}
           />
           <NumberField
-            label="Fade out"
+            label={t("editor.fadeOut")}
             unit="ms"
             value={fadeOut}
             min={0}
@@ -187,7 +189,7 @@ export function AudioEditorModal() {
             onChange={setFadeOut}
           />
           <NumberField
-            label="Gain"
+            label={t("editor.gain")}
             unit="dB"
             value={gainDb}
             min={-12}
@@ -199,7 +201,7 @@ export function AudioEditorModal() {
         </div>
 
         <Button variant="secondary" onClick={() => void testPlay()}>
-          Testar reprodução
+          {t("editor.testPlayback")}
         </Button>
         {error ? (
           <p role="alert" className="text-[13px] text-[var(--buddio-danger)]">

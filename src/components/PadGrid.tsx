@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useT } from "../i18n";
 import { playClip, stopClip } from "../lib/api";
 import { useLibraryStore } from "../stores/libraryStore";
 import { usePlaybackStore } from "../stores/playbackStore";
@@ -10,10 +11,8 @@ type Props = {
   emptyBody?: string;
 };
 
-export function PadGrid({
-  emptyTitle = "Sem sons ainda",
-  emptyBody = "Importe um áudio para montar sua grade. Clique toca; selecione para editar no inspetor.",
-}: Props) {
+export function PadGrid({ emptyTitle, emptyBody }: Props) {
+  const t = useT();
   const clips = useLibraryStore((s) => s.clips);
   const query = useLibraryStore((s) => s.query);
   const selectedId = useLibraryStore((s) => s.selectedId);
@@ -23,6 +22,9 @@ export function PadGrid({
   const errors = usePlaybackStore((s) => s.errors);
   const markError = usePlaybackStore((s) => s.markError);
   const collectionId = useUiStore((s) => s.selectedCollectionId);
+
+  const resolvedEmptyTitle = emptyTitle ?? t("pad.emptyTitle");
+  const resolvedEmptyBody = emptyBody ?? t("pad.emptyBody");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -40,7 +42,7 @@ export function PadGrid({
   if (loading && clips.length === 0) {
     return (
       <div className="flex min-h-[16rem] items-center justify-center text-sm text-[var(--buddio-text-secondary)]">
-        Carregando biblioteca…
+        {t("library.loading")}
       </div>
     );
   }
@@ -50,12 +52,12 @@ export function PadGrid({
     return (
       <div className="flex min-h-[16rem] flex-col items-center justify-center rounded-[var(--radius-card)] border border-dashed border-[var(--buddio-border)] px-6 text-center">
         <p className="text-[22px] font-bold text-[var(--buddio-text)]">
-          {collectionEmpty ? "Coleção sem sons" : emptyTitle}
+          {collectionEmpty ? t("pad.collectionEmpty") : resolvedEmptyTitle}
         </p>
         <p className="mt-2 max-w-sm text-[13px] text-[var(--buddio-text-secondary)]">
           {collectionEmpty
-            ? `Há ${clips.length} som${clips.length === 1 ? "" : "s"} na biblioteca, mas nenhum nesta coleção. Escolha “Todos” ou adicione sons à coleção na importação.`
-            : emptyBody}
+            ? t("pad.collectionEmptyHint", { count: clips.length })
+            : resolvedEmptyBody}
         </p>
         {collectionEmpty ? (
           <button
@@ -63,7 +65,7 @@ export function PadGrid({
             className="mt-4 text-[13px] font-semibold text-[var(--buddio-brand)] underline"
             onClick={() => useUiStore.getState().setSelectedCollectionId(null)}
           >
-            Ver todos os áudios
+            {t("library.viewAll")}
           </button>
         ) : null}
       </div>

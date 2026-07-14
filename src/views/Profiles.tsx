@@ -4,6 +4,7 @@ import { Button } from "../components/ui/Button";
 import { PromptModal } from "../components/ui/PromptModal";
 import { Search } from "../components/ui/Search";
 import { Select } from "../components/ui/Select";
+import { localizeSeedName, useT } from "../i18n";
 import { cn } from "../lib/cn";
 import * as api from "../lib/api";
 import { useCollectionsStore } from "../stores/collectionsStore";
@@ -12,6 +13,7 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { useToastStore } from "../stores/toastStore";
 
 export function ProfilesView() {
+  const t = useT();
   const profiles = useProfilesStore((s) => s.profiles);
   const loading = useProfilesStore((s) => s.loading);
   const error = useProfilesStore((s) => s.error);
@@ -44,16 +46,19 @@ export function ProfilesView() {
     id === activeId || (!activeId && profiles.find((p) => p.id === id)?.isDefault);
 
   const secondaryOptions = [
-    { value: "", label: "Não definida" },
+    { value: "", label: t("profiles.notDefined") },
     ...devices.map((d) => ({ value: d.name, label: d.name })),
   ];
   const monitorOptions = [
-    { value: "", label: "Padrão do sistema" },
+    { value: "", label: t("common.systemDefault") },
     ...devices.map((d) => ({ value: d.name, label: d.name })),
   ];
   const collectionOptions = [
-    { value: "", label: "Nenhuma" },
-    ...collections.map((c) => ({ value: c.id, label: c.name })),
+    { value: "", label: t("common.none") },
+    ...collections.map((c) => ({
+      value: c.id,
+      label: localizeSeedName(c.name, t),
+    })),
   ];
 
   const saveSelected = async () => {
@@ -68,7 +73,7 @@ export function ProfilesView() {
       await apply(selected.id);
       await hydrate();
       await hydrateSettings();
-      push({ kind: "success", message: "Perfil salvo." });
+      push({ kind: "success", message: t("profiles.saved") });
     } catch (err) {
       push({ kind: "error", message: String(err) });
     }
@@ -77,7 +82,7 @@ export function ProfilesView() {
   const duplicateSelected = async () => {
     if (!selected) return;
     try {
-      await create(`${selected.name} (cópia)`);
+      await create(t("profiles.copySuffix", { name: selected.name }));
     } catch (err) {
       push({ kind: "error", message: String(err) });
     }
@@ -87,14 +92,14 @@ export function ProfilesView() {
     <div className="buddio-scroll h-full overflow-y-auto px-[var(--space-pad-x)] py-[var(--space-pad-y)]">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-[length:var(--heading-size)] font-bold leading-none">Perfis</h1>
+          <h1 className="text-[length:var(--heading-size)] font-bold leading-none">{t("profiles.title")}</h1>
           <p className="mt-2 text-[13px] text-[var(--buddio-text-secondary)]">
-            Troque toda a configuração do Buddio com um clique.
+            {t("profiles.subtitle")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Search
-            placeholder="Buscar"
+            placeholder={t("common.search")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onClear={() => setQuery("")}
@@ -105,7 +110,7 @@ export function ProfilesView() {
             icon={<Plus size={16} weight="bold" />}
             onClick={() => setCreateOpen(true)}
           >
-            Novo perfil
+            {t("profiles.new")}
           </Button>
         </div>
       </div>
@@ -116,13 +121,13 @@ export function ProfilesView() {
 
       {loading && profiles.length === 0 ? (
         <p className="text-[13px] text-[var(--buddio-text-secondary)]">
-          Carregando perfis…
+          {t("profiles.loading")}
         </p>
       ) : (
         <div className="grid gap-5 lg:grid-cols-[1fr_1.15fr]">
           <section>
             <p className="mb-3 text-[13px] font-semibold text-[var(--buddio-text-secondary)]">
-              Seus perfis
+              {t("profiles.yours")}
             </p>
             <div className="flex flex-col gap-2">
               {filtered.map((p, index) => {
@@ -144,7 +149,9 @@ export function ProfilesView() {
                     )}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <h2 className="text-[15px] font-bold">{p.name}</h2>
+                      <h2 className="text-[15px] font-bold">
+                        {localizeSeedName(p.name, t)}
+                      </h2>
                       <span
                         className={cn(
                           "font-mono text-[12px] font-semibold",
@@ -157,16 +164,19 @@ export function ProfilesView() {
                       </span>
                     </div>
                     <p className="mt-1 text-[12px] text-[var(--buddio-text-secondary)]">
-                      {(p.secondaryDevice ?? "Sem saída")} ·{" "}
+                      {(p.secondaryDevice ?? t("profiles.noOutput"))} ·{" "}
                       {p.monitorEnabled
-                        ? (p.monitorDevice ?? "Monitor padrão")
-                        : "Monitor off"}
+                        ? (p.monitorDevice ?? t("profiles.monitorDefault"))
+                        : t("profiles.monitorOff")}
                     </p>
                     <p className="mt-0.5 text-[12px] text-[var(--buddio-text-muted)]">
                       {p.collectionId
-                        ? (collections.find((c) => c.id === p.collectionId)?.name ??
-                          "1 coleção")
-                        : "Sem coleção inicial"}
+                        ? localizeSeedName(
+                            collections.find((c) => c.id === p.collectionId)
+                              ?.name ?? "",
+                            t,
+                          ) || t("profiles.oneCollection")
+                        : t("profiles.noStartCollection")}
                     </p>
                   </button>
                 );
@@ -177,22 +187,26 @@ export function ProfilesView() {
           {selected ? (
             <section className="rounded-[var(--radius-card)] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] p-5">
               <div className="mb-4">
-                <h2 className="text-[17px] font-bold">Perfil: {selected.name}</h2>
+                <h2 className="text-[17px] font-bold">
+                  {t("profiles.heading", {
+                    name: localizeSeedName(selected.name, t),
+                  })}
+                </h2>
                 {isActive(selected.id) ? (
                   <p className="mt-1 text-[12px] font-semibold text-[var(--buddio-success)]">
-                    Configuração ativa
+                    {t("profiles.activeConfig")}
                   </p>
                 ) : (
                   <p className="mt-1 text-[12px] text-[var(--buddio-text-secondary)]">
-                    Clique no perfil para ativá-lo.
+                    {t("profiles.clickToActivate")}
                   </p>
                 )}
               </div>
 
               <div className="flex flex-col gap-3 text-[13px]">
-                <Field label="Saída">
+                <Field label={t("profiles.output")}>
                   <Select
-                    aria-label="Saída do perfil"
+                    aria-label={t("profiles.output")}
                     value={selected.secondaryDevice ?? ""}
                     options={secondaryOptions}
                     onChange={(next) => {
@@ -204,9 +218,9 @@ export function ProfilesView() {
                     }}
                   />
                 </Field>
-                <Field label="Monitor">
+                <Field label={t("profiles.monitor")}>
                   <Select
-                    aria-label="Monitor do perfil"
+                    aria-label={t("profiles.monitor")}
                     value={selected.monitorDevice ?? ""}
                     options={monitorOptions}
                     onChange={(next) => {
@@ -219,22 +233,22 @@ export function ProfilesView() {
                     }}
                   />
                 </Field>
-                <Field label="Microfone">
+                <Field label={t("profiles.mic")}>
                   <Select
-                    aria-label="Microfone do perfil"
+                    aria-label={t("profiles.mic")}
                     value="system"
                     options={[
                       {
                         value: "system",
-                        label: "Microfone padrão do sistema",
+                        label: t("routing.systemMic"),
                       },
                     ]}
                     onChange={() => undefined}
                   />
                 </Field>
-                <Field label="Coleção inicial">
+                <Field label={t("profiles.startCollection")}>
                   <Select
-                    aria-label="Coleção inicial"
+                    aria-label={t("profiles.startCollection")}
                     value={selected.collectionId ?? ""}
                     options={collectionOptions}
                     onChange={(next) => {
@@ -250,16 +264,16 @@ export function ProfilesView() {
 
               <div className="mt-5 flex flex-col gap-3">
                 <p className="text-[13px] font-semibold text-[var(--buddio-text-secondary)]">
-                  Mixagem
+                  {t("profiles.mixing")}
                 </p>
-                <Field label="Modo do microfone">
+                <Field label={t("profiles.micMode")}>
                   <Select
-                    aria-label="Modo do microfone do perfil"
+                    aria-label={t("profiles.micMode")}
                     value={selected.micRouteMode}
                     options={[
-                      { value: "mix", label: "Misturar" },
-                      { value: "ducking", label: "Ducking" },
-                      { value: "soundOnly", label: "Só som" },
+                      { value: "mix", label: t("profiles.micMode.mix") },
+                      { value: "ducking", label: t("settings.micMode.ducking") },
+                      { value: "soundOnly", label: t("settings.micMode.soundOnly") },
                     ]}
                     onChange={(next) => {
                       void api
@@ -273,9 +287,9 @@ export function ProfilesView() {
                     }}
                   />
                 </Field>
-                <Field label="Ducking">
+                <Field label={t("routing.ducking")}>
                   <Select
-                    aria-label="Ducking do perfil"
+                    aria-label={t("routing.ducking")}
                     value={String(selected.duckingDb)}
                     options={[
                       { value: "0", label: "0 dB" },
@@ -299,18 +313,18 @@ export function ProfilesView() {
                   icon={<Check size={16} weight="bold" />}
                   onClick={() => void saveSelected()}
                 >
-                  Salvar alterações
+                  {t("profiles.saveChanges")}
                 </Button>
                 <Button
                   variant="secondary"
                   icon={<Copy size={16} weight="bold" />}
                   onClick={() => void duplicateSelected()}
                 >
-                  Duplicar perfil
+                  {t("profiles.duplicate")}
                 </Button>
                 {!selected.isDefault ? (
                   <Button variant="danger" onClick={() => void remove(selected.id)}>
-                    Excluir
+                    {t("common.delete")}
                   </Button>
                 ) : null}
               </div>
@@ -321,11 +335,11 @@ export function ProfilesView() {
 
       <PromptModal
         open={createOpen}
-        title="Novo perfil"
-        description="O perfil copia os dispositivos e o volume atuais."
-        label="Nome do perfil"
-        placeholder="Streaming, Jogos…"
-        confirmLabel="Criar perfil"
+        title={t("profiles.new")}
+        description={t("profiles.description")}
+        label={t("profiles.nameLabel")}
+        placeholder={t("profiles.namePlaceholder")}
+        confirmLabel={t("profiles.create")}
         onClose={() => setCreateOpen(false)}
         onConfirm={(name) => create(name)}
       />

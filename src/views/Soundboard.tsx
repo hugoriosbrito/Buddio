@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { Plus, Stop } from "@phosphor-icons/react";
+import { localizeSeedName, useT } from "../i18n";
 import { stopAll } from "../lib/api";
 import { ImportDropzone } from "../components/ImportDropzone";
 import { PadGrid } from "../components/PadGrid";
@@ -13,6 +14,7 @@ import { useUiStore } from "../stores/uiStore";
 import { cn } from "../lib/cn";
 
 export function SoundboardView() {
+  const t = useT();
   const query = useLibraryStore((s) => s.query);
   const setQuery = useLibraryStore((s) => s.setQuery);
   const importFiles = useLibraryStore((s) => s.importFiles);
@@ -28,14 +30,16 @@ export function SoundboardView() {
     <div className="flex h-full flex-col gap-[var(--space-gap)] overflow-hidden px-[var(--space-pad-x)] py-[var(--space-pad-y)]">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-[length:var(--heading-size)] font-bold leading-none">Soundboard</h1>
+          <h1 className="text-[length:var(--heading-size)] font-bold leading-none">
+            {t("soundboard.title")}
+          </h1>
           <p className="mt-2 text-[13px] text-[var(--buddio-text-secondary)]">
-            Dispare sons instantaneamente em qualquer aplicativo.
+            {t("soundboard.subtitle")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Search
-            placeholder="Buscar"
+            placeholder={t("common.search")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onClear={() => setQuery("")}
@@ -51,14 +55,14 @@ export function SoundboardView() {
           icon={<Stop size={16} weight="fill" />}
           onClick={() => void stopAll()}
         >
-          Parar todos
+          {t("soundboard.stopAll")}
         </Button>
         <Button
           variant="ghost"
           icon={<Plus size={16} weight="bold" />}
           onClick={() => setCreateOpen(true)}
         >
-          Nova coleção
+          {t("nav.newCollection")}
         </Button>
       </div>
 
@@ -67,7 +71,7 @@ export function SoundboardView() {
           active={selectedCollectionId === null}
           onClick={() => setSelectedCollectionId(null)}
         >
-          Todos
+          {t("soundboard.all")}
         </FilterPill>
         {collections.map((c) => (
           <FilterPill
@@ -75,7 +79,7 @@ export function SoundboardView() {
             active={selectedCollectionId === c.id}
             onClick={() => setSelectedCollectionId(c.id)}
           >
-            {c.name}
+            {localizeSeedName(c.name, t)}
           </FilterPill>
         ))}
       </div>
@@ -87,7 +91,7 @@ export function SoundboardView() {
         >
           {error}{" "}
           <button type="button" className="underline" onClick={clearError}>
-            Fechar
+            {t("common.close")}
           </button>
         </p>
       ) : null}
@@ -98,11 +102,11 @@ export function SoundboardView() {
 
       <PromptModal
         open={createOpen}
-        title="Nova coleção"
-        description="Organize sons por contexto (chamadas, jogos, streaming)."
-        label="Nome da coleção"
-        placeholder="Favoritos, Chamadas…"
-        confirmLabel="Criar coleção"
+        title={t("soundboard.newCollectionTitle")}
+        description={t("soundboard.collectionDesc")}
+        label={t("soundboard.collectionName")}
+        placeholder={t("soundboard.collectionPlaceholder")}
+        confirmLabel={t("soundboard.createCollection")}
         onClose={() => setCreateOpen(false)}
         onConfirm={(name) => create(name)}
       />

@@ -50,11 +50,11 @@ pub fn resolve_input_device(name: Option<&str>) -> Result<cpal::Device> {
             }
         }
         return Err(AudioError::Device(format!(
-            "dispositivo de entrada não encontrado: {wanted}"
+            "input device not found: {wanted}"
         )));
     }
     host.default_input_device()
-        .ok_or_else(|| AudioError::Device("nenhum microfone padrão encontrado".into()))
+        .ok_or_else(|| AudioError::Device("no default microphone found".into()))
 }
 
 /// True for capture endpoints that would create a digital feedback loop when
@@ -85,7 +85,7 @@ pub fn resolve_input_device_for_mic_mix(name: Option<&str>) -> Result<cpal::Devi
     if let Some(wanted) = name.filter(|n| !n.is_empty() && *n != "default") {
         if is_loopback_capture_name(wanted) {
             return Err(AudioError::Device(
-                "não use CABLE Output (nem Stereo Mix) como microfone do Buddio — isso causa feedback no Discord"
+                "do not use CABLE Output (or Stereo Mix) as Buddio's microphone — that causes Discord feedback"
                     .into(),
             ));
         }
@@ -95,7 +95,7 @@ pub fn resolve_input_device_for_mic_mix(name: Option<&str>) -> Result<cpal::Devi
             }
         }
         return Err(AudioError::Device(format!(
-            "dispositivo de entrada não encontrado: {wanted}"
+            "input device not found: {wanted}"
         )));
     }
 
@@ -121,7 +121,7 @@ pub fn resolve_input_device_for_mic_mix(name: Option<&str>) -> Result<cpal::Devi
     }
 
     Err(AudioError::Device(
-        "nenhum microfone físico encontrado (só CABLE Output / loopback). Escolha seu mic real no Buddio"
+        "no physical microphone found (only CABLE Output / loopback). Pick your real mic in Buddio"
             .into(),
     ))
 }
@@ -261,7 +261,7 @@ fn build_input_stream(
         ),
         other => {
             return Err(AudioError::Device(format!(
-                "formato de amostra não suportado: {other:?}"
+                "unsupported sample format: {other:?}"
             )));
         }
     }

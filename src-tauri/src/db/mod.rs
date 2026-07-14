@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use uuid::Uuid;
 
 #[allow(dead_code)]
-pub const SCHEMA_VERSION: i32 = 4;
+pub const SCHEMA_VERSION: i32 = 5;
 
 const MIGRATION_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS migrations (
@@ -94,6 +94,15 @@ const MIGRATION_V4: &str = r#"
 ALTER TABLE clips ADD COLUMN loudness_refined INTEGER NOT NULL DEFAULT 0;
 "#;
 
+/// One-shot rename of Portuguese seed labels to English canonical names.
+/// (Display layer still localizes these for the active UI language.)
+const MIGRATION_V5: &str = r#"
+UPDATE collections SET name = 'Favorites' WHERE name = 'Favoritos';
+UPDATE collections SET name = 'Calls' WHERE name = 'Chamadas';
+UPDATE collections SET name = 'Games' WHERE name = 'Jogos';
+UPDATE profiles SET name = 'Default' WHERE name = 'Padrão';
+"#;
+
 /// Open (or create) the SQLite database and apply pending migrations.
 pub fn open_and_migrate(db_path: &std::path::Path) -> Result<Connection> {
     if let Some(parent) = db_path.parent() {
@@ -146,6 +155,11 @@ fn migrate(conn: &Connection) -> Result<()> {
         conn.execute("INSERT OR IGNORE INTO migrations (version) VALUES (4)", [])?;
     }
 
+    if current < 5 {
+        conn.execute_batch(MIGRATION_V5)?;
+        conn.execute("INSERT OR IGNORE INTO migrations (version) VALUES (5)", [])?;
+    }
+
     Ok(())
 }
 
@@ -154,10 +168,10 @@ fn seed_defaults(conn: &Connection) -> Result<()> {
         conn.query_row("SELECT COUNT(*) FROM collections", [], |r| r.get(0))?;
     if collection_count == 0 {
         let defaults = [
-            ("Favoritos", "#f2c95c", 0),
-            ("Chamadas", "#5b4dff", 1),
+            ("Favorites", "#f2c95c", 0),
+            ("Calls", "#5b4dff", 1),
             ("Streaming", "#7bc7b1", 2),
-            ("Jogos", "#d7a174", 3),
+            ("Games", "#d7a174", 3),
         ];
         for (name, color, position) in defaults {
             let id = Uuid::new_v4().to_string();
@@ -173,7 +187,7 @@ fn seed_defaults(conn: &Connection) -> Result<()> {
         let id = Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO profiles (id, name, monitor_enabled, master_volume, is_default)
-             VALUES (?1, 'Padrão', 1, 1.0, 1)",
+             VALUES (?1, 'Default', 1, 1.0, 1)",
             [&id],
         )?;
     }

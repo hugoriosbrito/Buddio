@@ -172,7 +172,7 @@ pub fn capture_hint_for(playback: Option<&str>) -> String {
         Some(p) if p.to_ascii_lowercase().contains("cable") => {
             "CABLE Output (VB-Audio Virtual Cable)".into()
         }
-        Some(_) => "a entrada correspondente do cabo virtual".into(),
+        Some(_) => crate::i18n::t("en", "capture.hint_generic"),
         None => "CABLE Output (VB-Audio Virtual Cable)".into(),
     }
 }
@@ -238,7 +238,7 @@ pub fn download_and_install(work_dir: &Path, bundled_pack: Option<&Path>) -> Res
     }
 
     let setup = find_setup_exe(&pack_dir)?
-        .ok_or_else(|| anyhow::anyhow!("VBCABLE_Setup_x64.exe não encontrado no pacote"))?;
+        .ok_or_else(|| anyhow::anyhow!("{}", crate::i18n::t("en", "err.vbcable_setup_missing")))?;
 
     tracing::info!(setup = %setup.display(), "running elevated VB-CABLE setup (single UAC)");
     let install = run_elevated_install(&setup, &pack_dir)?;
@@ -260,7 +260,7 @@ pub fn download_and_install(work_dir: &Path, bundled_pack: Option<&Path>) -> Res
     match install {
         ElevatedOutcome::Cancelled => {
             bail!(
-                "instalação do VB-CABLE cancelada no UAC. Aceite a permissão de administrador e tente de novo."
+                crate::i18n::t("en", "err.vbcable_uac_cancelled")
             );
         }
         // VB-CABLE often returns odd exit codes and needs a reboot before
@@ -278,7 +278,7 @@ pub fn download_and_install(work_dir: &Path, bundled_pack: Option<&Path>) -> Res
 
 #[cfg(not(windows))]
 pub fn download_and_install(_work_dir: &Path, _bundled_pack: Option<&Path>) -> Result<bool> {
-    bail!("instalação automática de cabo virtual só está disponível no Windows");
+    bail!("automatic virtual cable install is only available on Windows");
 }
 
 /// Candidate folders for a VB-CABLE pack shipped inside the app resources.
@@ -371,7 +371,7 @@ fn download_file(url: &str, dest: &Path) -> Result<()> {
         .with_context(|| format!("download VB-CABLE from {url}"))?;
     if !(200..300).contains(&response.status()) {
         bail!(
-            "não foi possível baixar o VB-CABLE (HTTP {})",
+            "could not download VB-CABLE (HTTP {})",
             response.status()
         );
     }
@@ -380,14 +380,14 @@ fn download_file(url: &str, dest: &Path) -> Result<()> {
     io::copy(&mut reader, &mut file).context("write VB-CABLE zip")?;
     file.flush()?;
     if !dest.is_file() || dest.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
-        bail!("download do VB-CABLE veio vazio de {url}");
+        bail!("VB-CABLE download was empty from {url}");
     }
     Ok(())
 }
 
 fn extract_zip(zip_path: &Path, dest: &Path) -> Result<()> {
     let file = fs::File::open(zip_path).with_context(|| format!("open {}", zip_path.display()))?;
-    let mut archive = zip::ZipArchive::new(file).context("ler zip do VB-CABLE")?;
+    let mut archive = zip::ZipArchive::new(file).context("read VB-CABLE zip")?;
     for i in 0..archive.len() {
         let mut entry = archive
             .by_index(i)

@@ -8,19 +8,25 @@ import {
 } from "@phosphor-icons/react";
 import { useState } from "react";
 import markUrl from "../../assets/brand/mark.svg";
+import { localizeSeedName, useT, type MessageKey } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { useCollectionsStore } from "../../stores/collectionsStore";
 import { useUiStore, type AppView } from "../../stores/uiStore";
 import { PromptModal } from "../ui/PromptModal";
 
-const NAV: Array<{ id: AppView; label: string; icon: typeof SquaresFour }> = [
-  { id: "soundboard", label: "Soundboard", icon: SquaresFour },
-  { id: "library", label: "Biblioteca", icon: Books },
-  { id: "profiles", label: "Perfis", icon: User },
-  { id: "routing", label: "Roteamento", icon: ArrowsLeftRight },
+const NAV: Array<{
+  id: AppView;
+  labelKey: MessageKey;
+  icon: typeof SquaresFour;
+}> = [
+  { id: "soundboard", labelKey: "nav.soundboard", icon: SquaresFour },
+  { id: "library", labelKey: "nav.library", icon: Books },
+  { id: "profiles", labelKey: "nav.profiles", icon: User },
+  { id: "routing", labelKey: "nav.routing", icon: ArrowsLeftRight },
 ];
 
 export function Sidebar() {
+  const t = useT();
   const view = useUiStore((s) => s.view);
   const setView = useUiStore((s) => s.setView);
   const selectedCollectionId = useUiStore((s) => s.selectedCollectionId);
@@ -36,7 +42,10 @@ export function Sidebar() {
           src={markUrl}
           alt=""
           className="shrink-0"
-          style={{ width: "var(--brand-mark-size)", height: "var(--brand-mark-size)" }}
+          style={{
+            width: "var(--brand-mark-size)",
+            height: "var(--brand-mark-size)",
+          }}
         />
         <span
           className="font-brand font-extrabold leading-none text-[var(--buddio-text)]"
@@ -47,7 +56,7 @@ export function Sidebar() {
       </div>
 
       <nav className="mt-3 flex flex-col gap-1 px-2 sm:px-3">
-        {NAV.map(({ id, label, icon: Icon }) => {
+        {NAV.map(({ id, labelKey, icon: Icon }) => {
           const active = view === id;
           return (
             <button
@@ -70,7 +79,7 @@ export function Sidebar() {
                 weight={active ? "fill" : "regular"}
                 className={active ? "text-[var(--buddio-brand)]" : undefined}
               />
-              {label}
+              {t(labelKey)}
             </button>
           );
         })}
@@ -79,11 +88,11 @@ export function Sidebar() {
       <div className="mt-6 min-h-0 flex-1 overflow-y-auto px-5">
         <div className="mb-2 flex items-center justify-between">
           <p className="text-[10px] font-semibold tracking-[0.08em] text-[var(--buddio-text-muted)]">
-            COLEÇÕES
+            {t("nav.collections").toUpperCase()}
           </p>
           <button
             type="button"
-            aria-label="Nova coleção"
+            aria-label={t("nav.newCollection")}
             className="text-[var(--buddio-text-muted)] hover:text-[var(--buddio-brand)]"
             onClick={() => setCreateOpen(true)}
           >
@@ -112,7 +121,9 @@ export function Sidebar() {
                   className="size-2 shrink-0 rounded-full"
                   style={{ background: c.color }}
                 />
-                <span className="min-w-0 flex-1 truncate text-left">{c.name}</span>
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {localizeSeedName(c.name, t)}
+                </span>
                 <span className="tabular-nums text-[11px] text-[var(--buddio-text-secondary)]">
                   {c.clipCount}
                 </span>
@@ -138,17 +149,16 @@ export function Sidebar() {
             <span className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-[var(--buddio-brand)]" />
           ) : null}
           <GearSix size={18} weight={view === "settings" ? "fill" : "regular"} />
-          Configurações
+          {t("nav.settings")}
         </button>
       </div>
 
       <PromptModal
         open={createOpen}
-        title="Nova coleção"
-        description="Organize sons por contexto (chamadas, jogos, streaming)."
-        label="Nome da coleção"
-        placeholder="Favoritos, Chamadas…"
-        confirmLabel="Criar coleção"
+        title={t("soundboard.newCollectionTitle")}
+        label={t("soundboard.collectionName")}
+        placeholder={t("soundboard.collectionPlaceholder")}
+        confirmLabel={t("soundboard.createCollection")}
         onClose={() => setCreateOpen(false)}
         onConfirm={(name) => create(name)}
       />

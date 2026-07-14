@@ -6,9 +6,11 @@ import { CommandPalette } from "./components/CommandPalette";
 import { DiagnosticsModal } from "./components/DiagnosticsModal";
 import { ImportReviewModal } from "./components/ImportReviewModal";
 import { OnboardingModal } from "./components/OnboardingModal";
+import { UpdateAvailableModal } from "./components/UpdateAvailableModal";
 import { Titlebar } from "./components/layout/Titlebar";
 import { ToastViewport } from "./components/ui/Toast";
 import { MiniApp } from "./mini/MiniApp";
+import { t } from "./i18n";
 import { installNativeShellGuards } from "./lib/nativeShell";
 import * as api from "./lib/api";
 import { useCollectionsStore } from "./stores/collectionsStore";
@@ -18,6 +20,7 @@ import { useProfilesStore } from "./stores/profilesStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useToastStore } from "./stores/toastStore";
 import { useUiStore } from "./stores/uiStore";
+import { useUpdateStore } from "./stores/updateStore";
 import { LibraryView } from "./views/Library";
 import { ProfilesView } from "./views/Profiles";
 import { RoutingView } from "./views/Routing";
@@ -39,6 +42,7 @@ function MainApp() {
   const markStarted = usePlaybackStore((s) => s.markStarted);
   const markStopped = usePlaybackStore((s) => s.markStopped);
   const pushToast = useToastStore((s) => s.push);
+  const checkOnLaunch = useUpdateStore((s) => s.checkOnLaunch);
 
   useEffect(() => {
     const uninstall = installNativeShellGuards();
@@ -53,6 +57,8 @@ function MainApp() {
         setOnboardingOpen(true);
       } else {
         await applyLaunchPreferences();
+        // After onboarding only: quiet update check → modal + titlebar badge.
+        void checkOnLaunch();
       }
       await Promise.all([
         hydrateLibrary(),
@@ -121,8 +127,8 @@ function MainApp() {
           kind: "success",
           message:
             n === 1
-              ? "1 áudio importado de pasta monitorada"
-              : `${n} áudios importados de pastas monitoradas`,
+              ? t("app.watchedImportOne")
+              : t("app.watchedImportMany", { count: n }),
         });
       }
     }).then((fn) => {
@@ -144,6 +150,7 @@ function MainApp() {
     };
   }, [
     applyLaunchPreferences,
+    checkOnLaunch,
     hydrateCollections,
     hydrateLibrary,
     hydrateProfiles,
@@ -183,6 +190,7 @@ function MainApp() {
         <ToastViewport />
         <CommandPalette />
         <ImportReviewModal />
+        <UpdateAvailableModal />
       </div>
     );
   }
@@ -202,6 +210,7 @@ function MainApp() {
       <AudioEditorModal />
       <ImportReviewModal />
       <DiagnosticsModal />
+      <UpdateAvailableModal />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { ProfileDto } from "../lib/api";
 import * as api from "../lib/api";
+import { localizeSeedName, t } from "../i18n";
 import { useSettingsStore } from "./settingsStore";
 import { useToastStore } from "./toastStore";
 
@@ -50,7 +51,9 @@ export const useProfilesStore = create<ProfilesState>((set, get) => ({
       });
       useToastStore.getState().push({
         kind: "success",
-        message: `Perfil “${profile.name}” aplicado.`,
+        message: t("profiles.applied", {
+          name: localizeSeedName(profile.name, t),
+        }),
       });
     } catch (err) {
       set({ error: String(err) });

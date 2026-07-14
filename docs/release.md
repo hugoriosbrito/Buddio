@@ -2,9 +2,12 @@
 
 ## Versioning
 
-- Bump `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and
-  `src/lib/updates.ts` (`APP_VERSION`) together.
-- Tag as `v1.0.0` (leading `v`). Pushing the tag runs `.github/workflows/release.yml`.
+- Bump `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`
+  together. `APP_VERSION` in `src/lib/updates.ts` reads `package.json`, so it
+  follows automatically.
+- Tag as `v1.0.0-rc5` (leading `v`; use a final `v1.0.0` when leaving RC).
+  Pushing the tag runs `.github/workflows/release.yml`.
+- Tags with `-` (e.g. `rc5`) are published as GitHub prereleases.
 
 ## Build locally
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useT, type MessageKey } from "../i18n";
 import { playClip, stopAll, stopClip } from "../lib/api";
 import { useLibraryStore } from "../stores/libraryStore";
 import { usePlaybackStore } from "../stores/playbackStore";
@@ -6,15 +7,16 @@ import { useUiStore, type AppView } from "../stores/uiStore";
 import { Modal } from "./ui/Modal";
 import { Search } from "./ui/Search";
 
-const VIEWS: Array<{ id: AppView; label: string }> = [
-  { id: "soundboard", label: "Ir para Soundboard" },
-  { id: "library", label: "Ir para Biblioteca" },
-  { id: "profiles", label: "Ir para Perfis" },
-  { id: "routing", label: "Ir para Roteamento" },
-  { id: "settings", label: "Ir para Configurações" },
+const VIEW_KEYS: Array<{ id: AppView; key: MessageKey }> = [
+  { id: "soundboard", key: "palette.goSoundboard" },
+  { id: "library", key: "palette.goLibrary" },
+  { id: "profiles", key: "palette.goProfiles" },
+  { id: "routing", key: "palette.goRouting" },
+  { id: "settings", key: "palette.goSettings" },
 ];
 
 export function CommandPalette() {
+  const t = useT();
   const open = useUiStore((s) => s.commandPaletteOpen);
   const setOpen = useUiStore((s) => s.setCommandPaletteOpen);
   const setView = useUiStore((s) => s.setView);
@@ -30,15 +32,19 @@ export function CommandPalette() {
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     const actions = [
-      { id: "stop-all", label: "Parar todos os sons", run: () => void stopAll() },
+      {
+        id: "stop-all",
+        label: t("palette.stopAll"),
+        run: () => void stopAll(),
+      },
       {
         id: "diagnostics",
-        label: "Abrir diagnóstico",
+        label: t("palette.openDiagnostics"),
         run: () => setDiagnosticsOpen(true),
       },
-      ...VIEWS.map((v) => ({
+      ...VIEW_KEYS.map((v) => ({
         id: `view-${v.id}`,
-        label: v.label,
+        label: t(v.key),
         run: () => setView(v.id),
       })),
       ...clips
@@ -51,7 +57,9 @@ export function CommandPalette() {
         .slice(0, 12)
         .map((c) => ({
           id: `clip-${c.id}`,
-          label: playingIds.has(c.id) ? `Parar “${c.name}”` : `Tocar “${c.name}”`,
+          label: playingIds.has(c.id)
+            ? t("palette.stopClip", { name: c.name })
+            : t("palette.playClip", { name: c.name }),
           run: async () => {
             if (playingIds.has(c.id)) await stopClip(c.id);
             else await playClip(c.id);
@@ -60,19 +68,19 @@ export function CommandPalette() {
     ];
     if (!q) return actions;
     return actions.filter((a) => a.label.toLowerCase().includes(q));
-  }, [clips, playingIds, query, setDiagnosticsOpen, setView]);
+  }, [clips, playingIds, query, setDiagnosticsOpen, setView, t]);
 
   return (
     <Modal
       open={open}
-      title="Command palette"
-      description="Busque sons, navegue e execute ações. Atalho: Ctrl+K"
+      title={t("palette.title")}
+      description={t("palette.description")}
       onClose={() => setOpen(false)}
       className="max-w-[520px]"
     >
       <Search
         autoFocus
-        placeholder="Buscar…"
+        placeholder={t("palette.search")}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onClear={() => setQuery("")}
@@ -94,7 +102,7 @@ export function CommandPalette() {
         ))}
         {results.length === 0 ? (
           <li className="px-3 py-6 text-center text-[13px] text-[var(--buddio-text-secondary)]">
-            Nenhum resultado
+            {t("palette.noResults")}
           </li>
         ) : null}
       </ul>

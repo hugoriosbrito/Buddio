@@ -449,6 +449,18 @@
     }
   }
 
+  @keyframes buddio-update-badge {
+    0%,
+    100% {
+      transform: scale(1);
+      box-shadow: 0 0 0 0 color-mix(in oklab, var(--buddio-danger) 45%, transparent);
+    }
+    50% {
+      transform: scale(1.08);
+      box-shadow: 0 0 0 5px color-mix(in oklab, var(--buddio-danger) 0%, transparent);
+    }
+  }
+
   .animate-overlay-in {
     animation: buddio-overlay-in var(--duration-modal) var(--ease-enter) both;
   }
@@ -491,5 +503,13 @@
 
   .animate-pop-in {
     animation: buddio-pop-in 140ms var(--ease-spring) both;
+  }
+
+  .animate-update-badge {
+    animation: buddio-update-badge 1.8s var(--ease-enter) infinite;
+  }
+
+  :root[data-reduce-motion="true"] .animate-update-badge {
+    animation: none;
   }
 }

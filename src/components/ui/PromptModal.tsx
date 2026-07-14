@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { useT } from "../../i18n";
 import { Button } from "./Button";
 import { Modal } from "./Modal";
 
@@ -21,15 +22,17 @@ export function PromptModal({
   description,
   label,
   placeholder,
-  confirmLabel = "Criar",
+  confirmLabel,
   initialValue = "",
   onClose,
   onConfirm,
 }: Props) {
+  const t = useT();
   const inputId = useId();
   const [value, setValue] = useState(initialValue);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const resolvedConfirm = confirmLabel ?? t("common.create");
 
   useEffect(() => {
     if (open) {
@@ -42,7 +45,7 @@ export function PromptModal({
   const submit = async () => {
     const trimmed = value.trim();
     if (!trimmed) {
-      setError("Informe um nome.");
+      setError(t("prompt.nameRequired"));
       return;
     }
     setSaving(true);
@@ -67,14 +70,14 @@ export function PromptModal({
       footer={
         <>
           <Button variant="secondary" disabled={saving} onClick={onClose}>
-            Cancelar
+            {t("common.cancel")}
           </Button>
           <Button
             variant="primary"
             disabled={saving}
             onClick={() => void submit()}
           >
-            {saving ? "Salvando…" : confirmLabel}
+            {saving ? t("prompt.saving") : resolvedConfirm}
           </Button>
         </>
       }

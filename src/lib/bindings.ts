@@ -288,6 +288,14 @@ async setTheme(theme: string) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async setLocale(locale: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_locale", { locale }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async setOnboardingDone(done: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_onboarding_done", { done }) };
@@ -368,6 +376,19 @@ async hideMiniWindow() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Resize the Mini window (full vertical vs ultra-compact horizontal bar).
+ * Done on the Rust side because JS `setSize` is unreliable for undecorated
+ * windows on Windows — the previous compact layout left a tall empty frame.
+ */
+async resizeMiniWindow(width: number, height: number, minWidth: number, minHeight: number, compact: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("resize_mini_window", { width, height, minWidth, minHeight, compact }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async getVirtualCableStatus() : Promise<Result<VirtualCableStatusDto, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_virtual_cable_status") };
@@ -378,6 +399,10 @@ async getVirtualCableStatus() : Promise<Result<VirtualCableStatusDto, string>> {
 },
 /**
  * Detect VB-CABLE (or similar), install if missing, then set secondary output.
+ * 
+ * Runs the heavy download/UAC/wait work on a blocking pool thread so the
+ * Tauri event loop (and onboarding UI) stays responsive — the previous sync
+ * command froze the window for the whole PowerShell cascade.
  */
 async ensureVirtualCable() : Promise<Result<VirtualCableEnsureResult, string>> {
     try {
@@ -431,7 +456,11 @@ async setWatchedFolderEnabled(id: string, enabled: boolean) : Promise<Result<Wat
 
 /** user-defined types **/
 
-export type AppSettings = { masterVolume: number; monitorEnabled: boolean; monitorDevice: string | null; secondaryDevice: string | null; stopAllHotkey: string | null; theme: string; activeProfileId: string | null; onboardingDone: boolean; 
+export type AppSettings = { masterVolume: number; monitorEnabled: boolean; monitorDevice: string | null; secondaryDevice: string | null; stopAllHotkey: string | null; theme: string; 
+/**
+ * UI locale: `en` | `pt`.
+ */
+locale: string; activeProfileId: string | null; onboardingDone: boolean; 
 /**
  * Legacy mirror: true when mic_route_mode is Mix or Ducking (voice present when idle).
  */

@@ -1,6 +1,7 @@
 import { ArrowUp, UploadSimple } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useT } from "../i18n";
 import { Button } from "./ui/Button";
 import { cn } from "../lib/cn";
 
@@ -18,6 +19,7 @@ export function ImportDropzone({
   variant = "default",
   label,
 }: Props) {
+  const t = useT();
   const [active, setActive] = useState(false);
 
   useEffect(() => {
@@ -58,7 +60,7 @@ export function ImportDropzone({
         icon={<UploadSimple size={16} weight="bold" />}
         onClick={onPick}
       >
-        {label ?? "Importar áudio"}
+        {label ?? t("dropzone.importAudio")}
       </Button>
     );
   }
@@ -77,16 +79,12 @@ export function ImportDropzone({
         <span className="mb-4 flex size-12 items-center justify-center rounded-full bg-[var(--buddio-brand-soft)] text-[var(--buddio-brand)]">
           <ArrowUp size={22} weight="bold" />
         </span>
-        <p className="text-[16px] font-bold">Arraste um áudio para cá</p>
+        <p className="text-[16px] font-bold">{t("dropzone.dragHere")}</p>
         <p className="mt-1 text-[13px] text-[var(--buddio-text-secondary)]">
-          MP3, WAV, FLAC, OGG ou M4A · até 2 GB
+          {t("dropzone.formatsHero")}
         </p>
-        <Button
-          variant="secondary"
-          className="mt-5"
-          onClick={onPick}
-        >
-          {label ?? "Selecionar arquivo"}
+        <Button variant="secondary" className="mt-5" onClick={onPick}>
+          {label ?? t("dropzone.selectFile")}
         </Button>
       </div>
     );
@@ -103,9 +101,9 @@ export function ImportDropzone({
       )}
     >
       <div>
-        <p className="text-[14px] font-semibold">Solte áudios aqui</p>
+        <p className="text-[14px] font-semibold">{t("dropzone.dropHere")}</p>
         <p className="text-[12px] text-[var(--buddio-text-secondary)]">
-          WAV, MP3, FLAC, OGG, M4A · ou escolha arquivos
+          {t("dropzone.formats")}
         </p>
       </div>
       <Button
@@ -113,7 +111,7 @@ export function ImportDropzone({
         icon={<UploadSimple size={16} weight="bold" />}
         onClick={onPick}
       >
-        {label ?? "Importar"}
+        {label ?? t("dropzone.import")}
       </Button>
     </div>
   );

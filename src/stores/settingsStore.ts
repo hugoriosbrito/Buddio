@@ -1,3 +1,4 @@
+import { emit } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { AppSettings, MicRouteModeDto, OutputDeviceDto } from "../lib/api";
 import * as api from "../lib/api";
@@ -18,6 +19,7 @@ type SettingsState = {
     mode: MicRouteModeDto,
     duckingDb?: number | null,
   ) => Promise<void>;
+  setLocale: (locale: string) => Promise<void>;
 };
 
 const defaults: AppSettings = {
@@ -27,6 +29,7 @@ const defaults: AppSettings = {
   secondaryDevice: null,
   stopAllHotkey: "Escape",
   theme: "light",
+  locale: "en",
   activeProfileId: null,
   onboardingDone: false,
   micMixEnabled: true,
@@ -115,6 +118,25 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         },
         error: null,
       }));
+    } catch (err) {
+      set({ error: String(err) });
+      throw err;
+    }
+  },
+
+  setLocale: async (locale) => {
+    try {
+      await api.setLocale(locale);
+      set((s) => ({
+        settings: { ...s.settings, locale },
+        error: null,
+      }));
+      // Separate webviews (Buddio Mini) keep their own Zustand store — notify them.
+      try {
+        await emit("settings-changed", { locale });
+      } catch {
+        /* browser preview / non-Tauri */
+      }
     } catch (err) {
       set({ error: String(err) });
       throw err;

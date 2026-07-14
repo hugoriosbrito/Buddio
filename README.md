@@ -41,16 +41,22 @@ the key and it plays instantly: no loading spinner, no "just a sec."
 
 ## ✨ Why you'll like it
 
-- 🎧 **Drop in and go**: drag and drop WAV, MP3, FLAC, OGG, or M4A files, or point Buddio at a folder to watch automatically
-- ⌨️ **Global hotkeys**: trigger sounds even while a game or a call has focus
+- 🎧 **Drop in and go**: drag and drop WAV, MP3, FLAC, OGG, or M4A files — review imports before they land, or point Buddio at a folder to watch automatically
+- ⌨️ **Global hotkeys**: keyboard *and* mouse shortcuts fire even while a game or a call has focus; bind per clip or use index hotkeys (`Ctrl+Alt+N` / `Alt+NumpadN`) for the N-th sound in the active collection
 - 🔊 **Two outputs at once**: hear it yourself *and* send it straight into your mic or call output (works great with VB-CABLE)
+- 🎙️ **Mic route modes**: Mix (voice + board), Ducking (voice softens while a clip plays), or Sound only (mute voice on the cable until playback ends)
 - ⚡ **Instant playback**: clips are pre-loaded in memory, so there's zero lag between the key press and the sound
+- 📊 **Loudness normalization**: match clips to your calibrated voice level on import, with optional manual gain override
+- 🔔 **VAD keepalive**: a soft formant pulse keeps Discord/Zoom voice-activity open for the whole clip (disable call noise suppression / Krisp for music)
 - 🗂️ **Collections & search**: sort sounds into "Streaming," "Gaming," "Calls"... and find any of them with `Ctrl/Cmd + K`
 - 🎚️ **Built-in audio editor**: trim, fade, adjust gain, and loop, all without touching the original file
-- 👤 **Profiles**: swap devices, volumes, and your go-to collection in a single click
+- 👤 **Profiles**: swap devices, volumes, mic route mode, and your go-to collection in a single click
 - 🧭 **Routing you can actually see**: a live diagram shows exactly where your audio is going, with a one-click fix when it isn't
+- 🩺 **Diagnostics**: validate CABLE, ducking, and normalization so you know the route is healthy before you go live
 - 🪟 **Buddio Mini**: a cozy tray popover for firing your pinned sounds without opening the full window, plus an Ultra Compact mode for four favorites
 - 🚀 **Guided setup**: a friendly first-run wizard walks you through output, mic, routing, your first sound, and your first hotkey
+- 🌐 **English & Portuguese**: UI language defaults to English; switch anytime in Settings → Appearance
+- ⬆️ **Update checks**: on launch, Buddio quietly checks GitHub Releases and prompts when a newer build is available
 - 🌓 **Light & dark themes** that feel genuinely designed, not just inverted
 - 🔒 **Private by default**: your library lives in a local file; audio never leaves your computer
 
@@ -70,8 +76,9 @@ the key and it plays instantly: no loading spinner, no "just a sec."
 
 ## 🧭 Status
 
-Buddio 1.0 is stable on Windows, built and used day to day by its own author.
-The core soundboard, hotkeys, routing, profiles, and Buddio Mini already work.
+Buddio **1.0** is in release-candidate on Windows (`1.0.0-rc*`), built and used
+day to day by its own author. The core soundboard, hotkeys, mic routing,
+normalization, diagnostics, profiles, i18n, and Buddio Mini already work.
 Windows ships with an NSIS installer (`.exe`) that also installs
 [VB-CABLE](https://vb-cable.com) when needed and removes it on uninstall only
 if Buddio installed it. SmartScreen may warn until the binary is code-signed —

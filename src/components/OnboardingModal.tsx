@@ -9,6 +9,7 @@ import {
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import markUrl from "../assets/brand/mark.svg";
+import { useT, type MessageKey } from "../i18n";
 import * as api from "../lib/api";
 import { playClip, playTestSample, resumeHotkeys, suspendHotkeys } from "../lib/api";
 import type { DiagnosticsDto } from "../lib/api";
@@ -17,6 +18,7 @@ import { useLibraryStore } from "../stores/libraryStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useToastStore } from "../stores/toastStore";
 import { useUiStore } from "../stores/uiStore";
+import { useUpdateStore } from "../stores/updateStore";
 import { ClipIcon } from "./ClipIcon";
 import { ImportDropzone } from "./ImportDropzone";
 import { Waveform } from "./Waveform";
@@ -35,17 +37,21 @@ export type Screen =
   | "hotkey"
   | "ready";
 
-const STEPPER = [
-  { id: 1, label: "Saída de áudio", screens: ["welcome", "output"] as const },
-  { id: 2, label: "Microfone", screens: ["mic"] as const },
+const STEPPER: Array<{
+  id: number;
+  labelKey: MessageKey;
+  screens: readonly Screen[];
+}> = [
+  { id: 1, labelKey: "onboarding.step.output", screens: ["welcome", "output"] },
+  { id: 2, labelKey: "onboarding.step.mic", screens: ["mic"] },
   {
     id: 3,
-    label: "Roteamento",
-    screens: ["virtual", "routing", "routeError"] as const,
+    labelKey: "onboarding.step.routing",
+    screens: ["virtual", "routing", "routeError"],
   },
-  { id: 4, label: "Primeiro som", screens: ["import"] as const },
-  { id: 5, label: "Atalho global", screens: ["hotkey", "ready"] as const },
-] as const;
+  { id: 4, labelKey: "onboarding.step.firstSound", screens: ["import"] },
+  { id: 5, labelKey: "onboarding.step.hotkey", screens: ["hotkey", "ready"] },
+];
 
 const VB_CABLE_URL = "https://vb-audio.com/Cable/";
 
@@ -119,8 +125,12 @@ type RouteHealth = {
   mixerOk: boolean;
   virtualOk: boolean;
   monitorOk: boolean;
-  failureTitle: string;
-  failureDetail: string;
+  failureTitleKey: MessageKey;
+  failureTitleVars?: Record<string, string | number>;
+  failureDetailKey: MessageKey;
+  failureDetailVars?: Record<string, string | number>;
+  /** When set (e.g. diagnostics warning), overrides failureDetailKey. */
+  failureDetailLiteral?: string;
   needsVirtualInstall: boolean;
 };
 
@@ -152,46 +162,48 @@ export function analyzeRouteHealth(args: {
   );
   const hasCandidate = Boolean(pickVirtualCandidate(devices, monitorDevice));
 
-  let failureTitle = "Roteamento incompleto";
-  let failureDetail = "Revise os dispositivos e tente novamente.";
+  let failureTitleKey: MessageKey = "onboarding.route.incomplete";
+  let failureTitleVars: Record<string, string | number> | undefined;
+  let failureDetailKey: MessageKey = "onboarding.route.incompleteDetail";
+  let failureDetailVars: Record<string, string | number> | undefined;
+  let failureDetailLiteral: string | undefined;
   let needsVirtualInstall = false;
 
   if (!virtualOk) {
     if (!hasCandidate) {
-      failureTitle = "Nenhum cabo virtual encontrado";
-      failureDetail =
-        "Para enviar sons ao Discord, Zoom ou jogos, instale o VB-CABLE (gratuito), reinicie o PC e use Reparar rota.";
+      failureTitleKey = "onboarding.route.noCable";
+      failureDetailKey = "onboarding.route.noCableDetail";
       needsVirtualInstall = true;
     } else if (secondaryDevice && !isVirtualDeviceName(secondaryDevice)) {
-      failureTitle = "Saída virtual apontando para alto-falantes";
-      failureDetail = `${secondaryDevice} não é um cabo virtual. O reparo pode selecionar o dispositivo certo automaticamente.`;
+      failureTitleKey = "onboarding.route.speakersAsVirtual";
+      failureDetailKey = "onboarding.route.speakersAsVirtualDetail";
+      failureDetailVars = { name: secondaryDevice };
     } else if (
       secondaryDevice &&
       !devices.some((d) => d.name === secondaryDevice)
     ) {
-      failureTitle = `${secondaryDevice} indisponível`;
-      failureDetail =
-        "O dispositivo pode estar desativado nas configurações de som do Windows.";
+      failureTitleKey = "onboarding.route.deviceUnavailable";
+      failureTitleVars = { name: secondaryDevice };
+      failureDetailKey = "onboarding.route.deviceUnavailableDetail";
     } else {
-      failureTitle = "Microfone virtual não configurado";
-      failureDetail =
-        "Há um cabo virtual no sistema, mas ele ainda não foi selecionado como saída secundária.";
+      failureTitleKey = "onboarding.route.virtualNotSelected";
+      failureDetailKey = "onboarding.route.virtualNotSelectedDetail";
     }
   } else if (!monitorOk) {
     if (monitorDevice && isVirtualDeviceName(monitorDevice)) {
-      failureTitle = "Monitor no pin do VB-CABLE";
-      failureDetail =
-        "No Windows 10/11 o VB-CABLE tem dois pins (Alto-falantes e CABLE In 16 Ch) que não podem abrir juntos. Escolha fones ou caixas reais no monitor — a saída da call fica só no CABLE.";
+      failureTitleKey = "onboarding.route.monitorOnCable";
+      failureDetailKey = "onboarding.route.monitorOnCableDetail";
+    } else if (monitorDevice) {
+      failureTitleKey = "onboarding.route.deviceUnavailable";
+      failureTitleVars = { name: monitorDevice };
+      failureDetailKey = "onboarding.route.monitorOffDetail";
     } else {
-      failureTitle = monitorDevice
-        ? `${monitorDevice} indisponível`
-        : "Monitor desativado";
-      failureDetail =
-        "O dispositivo de monitor pode estar desativado nas configurações de som do Windows.";
+      failureTitleKey = "onboarding.route.monitorOff";
+      failureDetailKey = "onboarding.route.monitorOffDetail";
     }
   } else if ((diagnostics?.warnings.length ?? 0) > 0) {
-    failureTitle = "Diagnóstico encontrou avisos";
-    failureDetail = diagnostics!.warnings[0]!;
+    failureTitleKey = "onboarding.route.diagWarnings";
+    failureDetailLiteral = diagnostics!.warnings[0]!;
   }
 
   return {
@@ -199,8 +211,11 @@ export function analyzeRouteHealth(args: {
     mixerOk: true,
     virtualOk,
     monitorOk,
-    failureTitle,
-    failureDetail,
+    failureTitleKey,
+    failureTitleVars,
+    failureDetailKey,
+    failureDetailVars,
+    failureDetailLiteral,
     needsVirtualInstall,
   };
 }
@@ -267,26 +282,26 @@ export function screenStepIndex(screen: Screen): number {
   return idx < 0 ? 0 : idx;
 }
 
-function footerLabel(screen: Screen): string {
+function footerLabelKey(screen: Screen): MessageKey {
   switch (screen) {
     case "welcome":
-      return "Boas-vindas";
+      return "onboarding.screen.welcome";
     case "output":
-      return "Saída de áudio";
+      return "onboarding.screen.output";
     case "mic":
-      return "Microfone";
+      return "onboarding.step.mic";
     case "virtual":
-      return "Microfone virtual";
+      return "onboarding.screen.virtual";
     case "routing":
-      return "Teste de roteamento";
+      return "onboarding.screen.routingTest";
     case "routeError":
-      return "Correção de rota";
+      return "onboarding.screen.routeFix";
     case "import":
-      return "Primeiro som";
+      return "onboarding.screen.firstSound";
     case "hotkey":
-      return "Atalho global";
+      return "onboarding.screen.hotkey";
     case "ready":
-      return "Configuração concluída";
+      return "onboarding.screen.done";
     default: {
       const _exhaustive: never = screen;
       return _exhaustive;
@@ -295,6 +310,7 @@ function footerLabel(screen: Screen): string {
 }
 
 export function OnboardingModal() {
+  const t = useT();
   const open = useUiStore((s) => s.onboardingOpen);
   const setOpen = useUiStore((s) => s.setOnboardingOpen);
   const theme = useUiStore((s) => s.theme);
@@ -309,6 +325,7 @@ export function OnboardingModal() {
   const setMasterVolume = useSettingsStore((s) => s.setMasterVolume);
   const hydrate = useSettingsStore((s) => s.hydrate);
   const pushToast = useToastStore((s) => s.push);
+  const checkOnLaunch = useUpdateStore((s) => s.checkOnLaunch);
 
   const clips = useLibraryStore((s) => s.clips);
   const selectedId = useLibraryStore((s) => s.selectedId);
@@ -332,7 +349,7 @@ export function OnboardingModal() {
   );
   const [inputDevices, setInputDevices] = useState<
     Array<{ value: string; label: string }>
-  >([{ value: "default", label: "Microfone padrão do sistema" }]);
+  >([{ value: "default", label: t("routing.systemMic") }]);
   const [selectedMic, setSelectedMic] = useState("default");
   const [hotkeyDraft, setHotkeyDraft] = useState<string | null>(null);
   const [hotkeyListening, setHotkeyListening] = useState(false);
@@ -441,9 +458,7 @@ export function OnboardingModal() {
             setEnsuringVirtual(false);
           }
         } else if (cable.pendingAfterReboot && !cable.installed) {
-          setVirtualEnsureMessage(
-            "Reinício detectado, mas o cabo virtual ainda não apareceu. Tente ativar de novo ou reinicie o PC.",
-          );
+          setVirtualEnsureMessage(t("onboarding.rebootNoCable"));
           setScreen("virtual");
         }
       } catch {
@@ -454,7 +469,9 @@ export function OnboardingModal() {
         const physical = list.filter((d) => !isLoopbackCaptureName(d.name));
         const mics = physical.map((d) => ({
           value: d.name,
-          label: d.isDefault ? `${d.name} (padrão)` : d.name,
+          label: d.isDefault
+            ? t("common.deviceDefaultSuffix", { name: d.name })
+            : d.name,
         }));
         if (mics.length > 0) {
           setInputDevices(mics);
@@ -466,14 +483,14 @@ export function OnboardingModal() {
         }
       } catch {
         setInputDevices([
-          { value: "default", label: "Microfone padrão do sistema" },
+          { value: "default", label: t("routing.systemMic") },
         ]);
         setSelectedMic("default");
       }
     })();
     // Only reset wizard state when the modal opens — not when masterVolume
     // changes mid-flow (the monitor slider would otherwise bounce to welcome).
-  }, [open, runDiagnostics, hydrate, pushToast]);
+  }, [open, runDiagnostics, hydrate, pushToast, t]);
 
   const runPlayTestSample = useCallback(async () => {
     try {
@@ -510,12 +527,13 @@ export function OnboardingModal() {
     } catch (err) {
       pushToast({
         kind: "warning",
-        message: `Não foi possível salvar a conclusão do onboarding: ${String(err)}. Ele pode reaparecer na próxima abertura.`,
+        message: t("onboarding.saveDoneFailed", { error: String(err) }),
         sticky: true,
       });
     }
     setOpen(false);
     setScreen("welcome");
+    void checkOnLaunch();
   };
 
   const repairRoute = async () => {
@@ -574,9 +592,7 @@ export function OnboardingModal() {
 
   const applyVirtual = async () => {
     setEnsuringVirtual(true);
-    setVirtualEnsureMessage(
-      "Preparando a rota… Se o cabo ainda não estiver instalado, o Windows pode pedir permissão de administrador.",
-    );
+    setVirtualEnsureMessage(t("onboarding.preparingRoute"));
     try {
       const result = await api.ensureVirtualCable();
       await hydrate();
@@ -658,13 +674,13 @@ export function OnboardingModal() {
 
   const micLabel =
     inputDevices.find((d) => d.value === selectedMic)?.label ??
-    "Microfone do sistema";
+    t("onboarding.systemMic");
   const virtualLabel =
     (virtualConfigured ? settings.secondaryDevice : null) ??
     virtualDevice?.name ??
-    "Cabo virtual não configurado";
+    t("onboarding.virtualNotConfigured");
   const monitorLabel =
-    settings.monitorDevice ?? recommendedDevice?.name ?? "Padrão do sistema";
+    settings.monitorDevice ?? recommendedDevice?.name ?? t("common.systemDefault");
 
   return (
     <div className="flex h-full bg-[var(--buddio-window)] text-[var(--buddio-text)]">
@@ -677,7 +693,7 @@ export function OnboardingModal() {
         </div>
 
         <p className="mb-4 text-[10px] font-semibold tracking-[0.1em] text-[var(--buddio-text-muted)]">
-          CONFIGURAÇÃO INICIAL
+          {t("onboarding.initialSetup")}
         </p>
 
         <ol className="relative flex flex-col gap-0">
@@ -718,7 +734,7 @@ export function OnboardingModal() {
                         : "font-medium text-[var(--buddio-text-secondary)]",
                   )}
                 >
-                  {step.label}
+                  {t(step.labelKey)}
                 </span>
               </li>
             );
@@ -726,7 +742,7 @@ export function OnboardingModal() {
         </ol>
 
         <p className="mt-auto text-[11px] text-[var(--buddio-text-muted)]">
-          {footerLabel(screen)}
+          {t(footerLabelKey(screen))}
         </p>
       </aside>
 
@@ -742,9 +758,11 @@ export function OnboardingModal() {
             ) : (
               <Sun size={14} weight="fill" />
             )}
-            {theme === "dark" ? "Escuro" : "Claro"}
+            {theme === "dark" ? t("settings.theme.dark") : t("settings.theme.light")}
             {themeMode === "system" ? (
-              <span className="text-[var(--buddio-text-muted)]">· sistema</span>
+              <span className="text-[var(--buddio-text-muted)]">
+                {t("onboarding.theme.systemSuffix")}
+              </span>
             ) : null}
           </button>
         </div>
@@ -840,8 +858,14 @@ export function OnboardingModal() {
 
           {screen === "routeError" ? (
             <RouteErrorScreen
-              failureTitle={routeHealth.failureTitle}
-              failureDetail={routeHealth.failureDetail}
+              failureTitle={t(
+                routeHealth.failureTitleKey,
+                routeHealth.failureTitleVars,
+              )}
+              failureDetail={
+                routeHealth.failureDetailLiteral ??
+                t(routeHealth.failureDetailKey, routeHealth.failureDetailVars)
+              }
               micOk={routeHealth.micOk}
               mixerOk={routeHealth.mixerOk}
               virtualOk={routeHealth.virtualOk}
@@ -934,6 +958,7 @@ function ThemeStepHeader({
   total?: number;
   success?: boolean;
 }) {
+  const t = useT();
   return (
     <div className="mb-7 max-w-2xl pr-28">
       <div className="mb-3 flex items-start justify-between gap-4">
@@ -949,7 +974,7 @@ function ThemeStepHeader({
         </p>
         {step != null ? (
           <p className="shrink-0 text-[11px] font-semibold tracking-[0.08em] text-[var(--buddio-text-muted)]">
-            ETAPA {step} DE {total}
+            {t("onboarding.stepOf", { step, total })}
           </p>
         ) : null}
       </div>
@@ -966,9 +991,9 @@ function ThemeStepHeader({
 function FooterNav({
   onBack,
   onNext,
-  nextLabel = "Continuar",
+  nextLabel,
   nextDisabled,
-  backLabel = "Voltar",
+  backLabel,
 }: {
   onBack?: () => void;
   onNext: () => void;
@@ -976,17 +1001,18 @@ function FooterNav({
   nextDisabled?: boolean;
   backLabel?: string;
 }) {
+  const t = useT();
   return (
     <div className="mt-8 flex items-center justify-between gap-3 border-t border-[var(--buddio-border-subtle)] pt-5">
       {onBack ? (
         <Button variant="secondary" onClick={onBack}>
-          {backLabel}
+          {backLabel ?? t("onboarding.back")}
         </Button>
       ) : (
         <span />
       )}
       <Button variant="primary" disabled={nextDisabled} onClick={onNext}>
-        {nextLabel}
+        {nextLabel ?? t("onboarding.continue")}
       </Button>
     </div>
   );
@@ -999,6 +1025,7 @@ function WelcomeScreen({
   onStart: () => void;
   onSkip: () => void;
 }) {
+  const t = useT();
   return (
     <div className="flex min-h-full items-center gap-10">
       <div className="max-w-xl flex-1">
@@ -1006,37 +1033,36 @@ function WelcomeScreen({
           BUDDIO
         </p>
         <h1 className="text-[34px] font-bold leading-[1.15] tracking-[-0.03em]">
-          Seu soundboard, pronto em poucos minutos.
+          {t("onboarding.welcome.title")}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-[var(--buddio-text-secondary)]">
-          Vamos configurar o áudio, testar a rota e adicionar seu primeiro som.
-          Sem conta e sem nuvem.
+          {t("onboarding.welcome.subtitle")}
         </p>
 
         <ul className="mt-8 flex flex-col gap-4">
           <WelcomeFeature
-            title="Atalhos globais"
-            body="Toque sons mesmo com o Buddio em segundo plano."
+            title={t("onboarding.welcome.featureHotkeys")}
+            body={t("onboarding.welcome.featureHotkeysBody")}
           />
           <WelcomeFeature
-            title="Roteamento simples"
-            body="Envie o som para chamadas, jogos e transmissões."
+            title={t("onboarding.welcome.featureRouting")}
+            body={t("onboarding.welcome.featureRoutingBody")}
           />
           <WelcomeFeature
-            title="Tudo local"
-            body="Sua biblioteca permanece no computador."
+            title={t("onboarding.welcome.featureLocal")}
+            body={t("onboarding.welcome.featureLocalBody")}
           />
         </ul>
 
         <div className="mt-9 flex flex-col items-start gap-3">
           <Button variant="primary" className="h-11 min-w-[220px]" onClick={onStart}>
-            Começar configuração
+            {t("onboarding.welcome.cta")}
           </Button>
           <Button variant="secondary" className="h-11 min-w-[220px]" onClick={onSkip}>
-            Configurar depois
+            {t("onboarding.welcome.skip")}
           </Button>
           <p className="text-[12px] text-[var(--buddio-text-muted)]">
-            Leva cerca de 2 minutos
+            {t("onboarding.welcome.duration")}
           </p>
         </div>
       </div>
@@ -1089,12 +1115,13 @@ function OutputScreen({
   onBack: () => void;
   onNext: () => void;
 }) {
+  const t = useT();
   return (
     <div>
       <ThemeStepHeader
-        eyebrow="ÁUDIO"
-        title="Onde você quer ouvir os sons?"
-        subtitle="Escolha o dispositivo usado para monitorar o Buddio. Isso não altera a saída das chamadas."
+        eyebrow={t("onboarding.eyebrow.audio")}
+        title={t("onboarding.output.title")}
+        subtitle={t("onboarding.output.subtitle")}
         step={1}
       />
 
@@ -1103,17 +1130,17 @@ function OutputScreen({
           <DevicePickCard
             selected={selectedName === recommended.name}
             title={recommended.name}
-            subtitle="Dispositivo recomendado"
-            footer="Saída padrão do sistema"
+            subtitle={t("onboarding.output.recommended")}
+            footer={t("onboarding.output.systemFooter")}
             footerAccent
             onClick={() => onSelect(recommended.name)}
           />
         ) : (
           <DevicePickCard
             selected
-            title="Padrão do sistema"
-            subtitle="Dispositivo recomendado"
-            footer="Saída padrão do sistema"
+            title={t("onboarding.output.systemTitle")}
+            subtitle={t("onboarding.output.recommended")}
+            footer={t("onboarding.output.systemFooter")}
             footerAccent
             onClick={() => onSelect("")}
           />
@@ -1122,16 +1149,16 @@ function OutputScreen({
           <DevicePickCard
             selected={selectedName === other.name}
             title={other.name}
-            subtitle="Alto-falantes / outro dispositivo"
-            footer="Disponível"
+            subtitle={t("onboarding.output.other")}
+            footer={t("common.available")}
             onClick={() => onSelect(other.name)}
           />
         ) : (
           <DevicePickCard
             selected={false}
-            title="Nenhum outro dispositivo"
-            subtitle="Conecte fones ou alto-falantes"
-            footer="Indisponível"
+            title={t("onboarding.output.noOther")}
+            subtitle={t("onboarding.output.connect")}
+            footer={t("common.unavailable")}
             disabled
           />
         )}
@@ -1140,15 +1167,15 @@ function OutputScreen({
       <section className="rounded-[var(--radius-card)] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-bold">Teste de monitor</p>
+            <p className="text-[15px] font-bold">{t("onboarding.output.testTitle")}</p>
             <p className="mt-1 text-[13px] text-[var(--buddio-text-secondary)]">
-              Reproduza um som curto para confirmar que você consegue ouvir.
+              {t("onboarding.output.testHint")}
             </p>
             <Waveform playing className="mt-4 h-10 max-w-md" />
             <div className="mt-4 max-w-md">
               <div className="mb-1.5 flex justify-between text-[12px]">
                 <span className="text-[var(--buddio-text-secondary)]">
-                  Volume do monitor
+                  {t("onboarding.output.monitorVolume")}
                 </span>
                 <span className="font-semibold">
                   {Math.round(monitorVolume * 100)}%
@@ -1162,12 +1189,12 @@ function OutputScreen({
                 value={monitorVolume}
                 onChange={(e) => onVolume(Number(e.target.value))}
                 className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[var(--buddio-surface-secondary)] accent-[var(--buddio-brand)]"
-                aria-label="Volume do monitor"
+                aria-label={t("onboarding.output.monitorVolume")}
               />
             </div>
           </div>
           <Button variant="primary" onClick={onPlayTest}>
-            Reproduzir teste
+            {t("onboarding.output.playTest")}
           </Button>
         </div>
       </section>
@@ -1251,6 +1278,7 @@ function MicScreen({
   onBack: () => void;
   onNext: () => void;
 }) {
+  const t = useT();
   const [meterStatus, setMeterStatus] = useState<
     "starting" | "live" | "error"
   >("starting");
@@ -1259,34 +1287,33 @@ function MicScreen({
   return (
     <div>
       <ThemeStepHeader
-        eyebrow="MICROFONE"
-        title="Escolha e teste seu microfone"
-        subtitle="Use o microfone físico (nunca CABLE Output). O Buddio mistura sua voz com os sons no cabo virtual — CABLE Output é só para o Discord."
+        eyebrow={t("onboarding.eyebrow.mic")}
+        title={t("onboarding.mic.title")}
+        subtitle={t("onboarding.mic.subtitle")}
         step={2}
       />
 
       <div className="mb-5 max-w-xl">
         <p className="mb-1.5 text-[12px] text-[var(--buddio-text-secondary)]">
-          Microfone
+          {t("routing.mic")}
         </p>
         <Select
           size="lg"
-          aria-label="Microfone"
+          aria-label={t("routing.mic")}
           value={selected}
           options={
             options.length > 0
               ? options
-              : [{ value: "default", label: "Microfone padrão do sistema" }]
+              : [{ value: "default", label: t("routing.systemMic") }]
           }
           onChange={onSelect}
         />
       </div>
 
       <section className="mb-4 max-w-xl rounded-[var(--radius-card)] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] p-5">
-        <p className="text-[15px] font-bold">Teste sua voz</p>
+        <p className="text-[15px] font-bold">{t("onboarding.mic.testTitle")}</p>
         <p className="mt-1 text-[13px] text-[var(--buddio-text-secondary)]">
-          Fale normalmente. O nível deve permanecer na área roxa, sem alcançar o
-          amarelo.
+          {t("onboarding.mic.testHint")}
         </p>
         {options.some((o) => o.value === selected) ? (
           <LevelMeter
@@ -1298,13 +1325,19 @@ function MicScreen({
           />
         ) : (
           <p className="mt-4 text-[13px] text-[var(--buddio-text-secondary)]">
-            Detectando microfones…
+            {t("onboarding.mic.detecting")}
           </p>
         )}
         <div className="mt-3 flex justify-between text-[11px]">
-          <span className="text-[var(--buddio-text-muted)]">Silêncio</span>
-          <span className="font-semibold text-[var(--buddio-brand)]">Ideal</span>
-          <span className="text-[var(--buddio-warning)]">Muito alto</span>
+          <span className="text-[var(--buddio-text-muted)]">
+            {t("onboarding.mic.silence")}
+          </span>
+          <span className="font-semibold text-[var(--buddio-brand)]">
+            {t("onboarding.mic.ideal")}
+          </span>
+          <span className="text-[var(--buddio-warning)]">
+            {t("onboarding.mic.tooLoud")}
+          </span>
         </div>
       </section>
 
@@ -1313,27 +1346,25 @@ function MicScreen({
           <>
             <p className="flex items-center gap-2 text-[13px] font-semibold">
               <span className="size-2 rounded-full bg-[var(--buddio-success)]" />
-              Microfone detectado e funcionando
+              {t("onboarding.mic.ok")}
             </p>
             <p className="mt-1 text-[12px] text-[var(--buddio-text-secondary)]">
-              Noise gate será ativado automaticamente e poderá ser ajustado
-              depois.
+              {t("onboarding.mic.noiseGate")}
             </p>
           </>
         ) : meterStatus === "starting" ? (
           <p className="flex items-center gap-2 text-[13px] font-semibold text-[var(--buddio-text-secondary)]">
             <span className="size-2 rounded-full bg-[var(--buddio-text-muted)]" />
-            Abrindo microfone…
+            {t("onboarding.mic.opening")}
           </p>
         ) : (
           <>
             <p className="flex items-center gap-2 text-[13px] font-semibold text-[var(--buddio-warning)]">
               <span className="size-2 rounded-full bg-[var(--buddio-warning)]" />
-              Microfone indisponível
+              {t("onboarding.mic.unavailable")}
             </p>
             <p className="mt-1 text-[12px] text-[var(--buddio-text-secondary)]">
-              {meterMessage ??
-                "Verifique se outro app não está usando o microfone e tente novamente."}
+              {meterMessage ?? t("onboarding.mic.busy")}
             </p>
           </>
         )}
@@ -1369,12 +1400,13 @@ function VirtualScreen({
   onBack: () => void;
   onNext: () => void;
 }) {
+  const t = useT();
   return (
     <div>
       <ThemeStepHeader
-        eyebrow="ROTEAMENTO"
-        title="Ativar sons nas chamadas"
-        subtitle="O Buddio configura a rota automaticamente. No Discord ou Zoom, basta escolher o microfone indicado abaixo."
+        eyebrow={t("onboarding.eyebrow.routing")}
+        title={t("onboarding.virtual.title")}
+        subtitle={t("onboarding.virtual.subtitle")}
         step={3}
       />
 
@@ -1386,10 +1418,12 @@ function VirtualScreen({
             </span>
             <div>
               <p className="text-[15px] font-bold">
-                {configured || available ? virtualLabel : "Rota para chamadas"}
+                {configured || available
+                  ? virtualLabel
+                  : t("onboarding.virtual.callRoute")}
               </p>
               <p className="text-[12px] text-[var(--buddio-text-secondary)]">
-                Configuração automática
+                {t("onboarding.virtual.autoConfig")}
               </p>
             </div>
           </div>
@@ -1414,34 +1448,36 @@ function VirtualScreen({
               )}
             />
             {configured
-              ? "Pronta"
+              ? t("onboarding.virtual.ready")
               : available
-                ? "Detectada"
-                : "Não instalada"}
+                ? t("onboarding.virtual.detected")
+                : t("onboarding.virtual.notInstalled")}
           </span>
         </div>
         <div className="grid gap-2 border-t border-[var(--buddio-border-subtle)] pt-4 text-[13px]">
-          <MetaLine label="Formato" value={`${sampleRate ?? 48000} Hz · estéreo`} />
-          <MetaLine label="No Discord/Zoom" value={captureHint} />
           <MetaLine
-            label="Tecnologia"
-            value="VB-CABLE (vb-cable.com)"
+            label={t("onboarding.virtual.format")}
+            value={t("onboarding.virtual.formatValue", {
+              hz: sampleRate ?? 48000,
+            })}
+          />
+          <MetaLine label={t("onboarding.virtual.inApps")} value={captureHint} />
+          <MetaLine
+            label={t("onboarding.virtual.tech")}
+            value={t("onboarding.virtual.techValue")}
           />
         </div>
       </section>
 
       <div className="mb-4 max-w-2xl space-y-3 rounded-[14px] border border-[var(--buddio-brand-border)] bg-[var(--buddio-brand-soft)] px-4 py-3">
         <p className="text-[13px] font-semibold text-[var(--buddio-brand-deep)]">
-          Um clique configura tudo
+          {t("onboarding.virtual.oneClick")}
         </p>
         <p className="text-[13px] text-[var(--buddio-text-secondary)]">
-          Se o cabo ainda não existir, o Windows pedirá permissão de
-          administrador (só o diálogo UAC — sem janelas pretas do PowerShell).
-          Pode ser necessário reiniciar depois da instalação. Com a mixagem
-          ligada, sua voz e os sons saem juntos no Discord.
+          {t("onboarding.virtual.uacHint")}
         </p>
         <p className="text-[12px] text-[var(--buddio-text-secondary)]">
-          Usa VB-CABLE de{" "}
+          {t("onboarding.virtual.usesVb")}{" "}
           <button
             type="button"
             className="font-semibold text-[var(--buddio-brand)] underline-offset-2 hover:underline"
@@ -1449,25 +1485,20 @@ function VirtualScreen({
           >
             vb-cable.com
           </button>{" "}
-          (donationware — contribuições são bem-vindas).
+          {t("onboarding.virtual.donationware")}
         </p>
-        <Button
-          variant="primary"
-          loading={ensuring}
-          onClick={onActivate}
-        >
+        <Button variant="primary" loading={ensuring} onClick={onActivate}>
           {ensuring
-            ? "Configurando… aguarde o Windows"
+            ? t("onboarding.virtual.configuring")
             : configured
-              ? "Rechecar rota"
+              ? t("onboarding.virtual.recheck")
               : available
-                ? "Ativar rota"
-                : "Instalar e ativar"}
+                ? t("onboarding.virtual.activate")
+                : t("onboarding.virtual.installActivate")}
         </Button>
         {ensuring ? (
           <p className="text-[12px] text-[var(--buddio-text-secondary)]">
-            O Buddio continua respondendo. Se o Windows pedir permissão, aceite
-            — não feche o app.
+            {t("onboarding.virtual.stillResponding")}
           </p>
         ) : null}
       </div>
@@ -1481,7 +1512,11 @@ function VirtualScreen({
       <FooterNav
         onBack={onBack}
         onNext={onNext}
-        nextLabel={configured ? "Testar roteamento" : "Continuar sem rota"}
+        nextLabel={
+          configured
+            ? t("onboarding.virtual.testRouting")
+            : t("onboarding.virtual.continueWithout")
+        }
         nextDisabled={ensuring}
       />
     </div>
@@ -1518,29 +1553,34 @@ function RoutingScreen({
   onBack: () => void;
   onNext: () => void;
 }) {
+  const t = useT();
   return (
     <div>
       <ThemeStepHeader
-        eyebrow="ROTEAMENTO"
-        title="Vamos testar o caminho completo"
-        subtitle="O teste reproduz um tom curto e verifica cada etapa sem abrir outro aplicativo."
+        eyebrow={t("onboarding.eyebrow.routing")}
+        title={t("onboarding.routing.title")}
+        subtitle={t("onboarding.routing.subtitle")}
         step={3}
       />
 
       <section className="mb-4 rounded-[var(--radius-card)] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] p-5">
-        <p className="mb-4 text-[15px] font-bold">Fluxo de áudio</p>
+        <p className="mb-4 text-[15px] font-bold">{t("routing.audioFlow")}</p>
         <div className="flex flex-wrap items-stretch gap-2">
-          <FlowNode title="Microfone" subtitle={micLabel} ok />
-          <FlowArrow />
-          <FlowNode title="Mixer Buddio" subtitle="Voz + efeitos" ok />
+          <FlowNode title={t("routing.mic")} subtitle={micLabel} ok />
           <FlowArrow />
           <FlowNode
-            title="Virtual Mic"
+            title={t("routing.mixer")}
+            subtitle={t("onboarding.routing.mixerSubtitle")}
+            ok
+          />
+          <FlowArrow />
+          <FlowNode
+            title={t("onboarding.routing.virtualMic")}
             subtitle={virtualLabel}
             ok={routeReady}
           />
           <FlowArrow />
-          <FlowNode title="Monitor" subtitle={monitorLabel} ok />
+          <FlowNode title={t("routing.monitor")} subtitle={monitorLabel} ok />
         </div>
       </section>
 
@@ -1557,13 +1597,13 @@ function RoutingScreen({
                 )}
               />
               {routeReady
-                ? "Tudo parece pronto"
-                : "Rota virtual ainda incompleta"}
+                ? t("onboarding.routing.allReady")
+                : t("onboarding.routing.incomplete")}
             </p>
             <p className="mt-1 text-[13px] text-[var(--buddio-text-secondary)]">
               {routeReady
-                ? "Execute o teste para confirmar a rota e ouvir o retorno no monitor."
-                : "Sem um cabo virtual configurado, o teste de chamada vai falhar. Você ainda pode continuar só com o monitor."}
+                ? t("onboarding.routing.runHint")
+                : t("onboarding.routing.noCableWarn")}
             </p>
             <div className="mt-3 h-1.5 max-w-sm overflow-hidden rounded-full bg-[var(--buddio-surface-secondary)]">
               <div
@@ -1579,13 +1619,13 @@ function RoutingScreen({
             </div>
           </div>
           <Button variant="primary" loading={checking} onClick={onTest}>
-            Executar teste
+            {t("onboarding.routing.runTest")}
           </Button>
         </div>
       </section>
 
       <Button variant="secondary" onClick={onProblems}>
-        Estou com problemas
+        {t("onboarding.routing.haveProblems")}
       </Button>
 
       <FooterNav onBack={onBack} onNext={onNext} />
@@ -1624,12 +1664,13 @@ function RouteErrorScreen({
   onBack: () => void;
   onRetry: () => void;
 }) {
+  const t = useT();
   return (
     <div>
       <ThemeStepHeader
-        eyebrow="DIAGNÓSTICO"
-        title="Problema no roteamento"
-        subtitle="O Buddio identificou o ponto da falha. Se houver um cabo virtual instalado, o reparo automático pode corrigir a seleção."
+        eyebrow={t("onboarding.eyebrow.diag")}
+        title={t("onboarding.routeError.title")}
+        subtitle={t("onboarding.routeError.subtitle")}
         step={3}
       />
 
@@ -1648,15 +1689,17 @@ function RouteErrorScreen({
       </div>
 
       <section className="mb-4 max-w-xl rounded-[var(--radius-card)] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] p-5">
-        <p className="mb-3 text-[15px] font-bold">Diagnóstico</p>
-        <DiagRow label="Microfone de entrada" ok={micOk} />
-        <DiagRow label="Mixer Buddio" ok={mixerOk} />
+        <p className="mb-3 text-[15px] font-bold">
+          {t("onboarding.routeError.diag")}
+        </p>
+        <DiagRow label={t("onboarding.routeError.inputMic")} ok={micOk} />
+        <DiagRow label={t("routing.mixer")} ok={mixerOk} />
         <DiagRow
-          label="Cabo virtual"
+          label={t("onboarding.routeError.virtualCable")}
           ok={virtualOk}
-          failLabel="Não encontrado"
+          failLabel={t("onboarding.routeError.notFound")}
         />
-        <DiagRow label="Monitor" ok={monitorOk} />
+        <DiagRow label={t("routing.monitor")} ok={monitorOk} />
       </section>
 
       {repairError ? (
@@ -1665,15 +1708,15 @@ function RouteErrorScreen({
 
       <div className="mb-2 flex flex-wrap gap-2">
         <Button variant="primary" loading={repairing} onClick={onRepair}>
-          Reparar rota automaticamente
+          {t("onboarding.routeError.repairAuto")}
         </Button>
         {needsVirtualInstall ? (
           <Button variant="secondary" onClick={onInstallVirtual}>
-            Baixar VB-CABLE
+            {t("onboarding.routeError.downloadCable")}
           </Button>
         ) : (
           <Button variant="secondary" onClick={onWindows}>
-            Abrir configurações do Windows
+            {t("onboarding.routeError.openWindows")}
           </Button>
         )}
       </div>
@@ -1681,7 +1724,7 @@ function RouteErrorScreen({
       <FooterNav
         onBack={onBack}
         onNext={onRetry}
-        nextLabel="Tentar novamente"
+        nextLabel={t("onboarding.routeError.retry")}
       />
     </div>
   );
@@ -1690,12 +1733,13 @@ function RouteErrorScreen({
 function DiagRow({
   label,
   ok,
-  failLabel = "Falha",
+  failLabel,
 }: {
   label: string;
   ok: boolean;
   failLabel?: string;
 }) {
+  const t = useT();
   return (
     <div className="flex items-center justify-between border-b border-[var(--buddio-border-subtle)] py-2.5 last:border-none">
       <span className="flex items-center gap-2 text-[13px]">
@@ -1713,7 +1757,9 @@ function DiagRow({
           ok ? "text-[var(--buddio-success)]" : "text-[var(--buddio-danger)]",
         )}
       >
-        {ok ? "Funcionando" : failLabel}
+        {ok
+          ? t("onboarding.routeError.working")
+          : (failLabel ?? t("onboarding.routeError.fail"))}
       </span>
     </div>
   );
@@ -1737,19 +1783,20 @@ function ImportScreen({
   onBack: () => void;
   onNext: () => void;
 }) {
+  const t = useT();
   return (
     <div>
       <ThemeStepHeader
-        eyebrow="BIBLIOTECA"
-        title="Adicione seu primeiro som"
-        subtitle="Você pode arrastar um arquivo ou escolher um áudio do computador. O original permanece intacto."
+        eyebrow={t("onboarding.eyebrow.library")}
+        title={t("onboarding.import.title")}
+        subtitle={t("onboarding.import.subtitle")}
         step={4}
       />
 
       <ImportDropzone
         onImport={onImport}
         variant="hero"
-        label="Selecionar arquivo"
+        label={t("onboarding.import.selectFile")}
       />
 
       {clip ? (
@@ -1769,7 +1816,7 @@ function ImportScreen({
           <Waveform peaks={clip.peaks} className="mx-4 hidden h-8 flex-1 sm:flex" />
           <button
             type="button"
-            aria-label="Tocar"
+            aria-label={t("onboarding.import.play")}
             className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[var(--buddio-brand)] text-white"
             onClick={() => void playClip(clip.id)}
           >
@@ -1808,12 +1855,13 @@ function HotkeyScreen({
   onBack: () => void;
   onSave: () => void;
 }) {
+  const t = useT();
   return (
     <div>
       <ThemeStepHeader
-        eyebrow="ATALHO GLOBAL"
-        title="Escolha uma tecla para tocar o som"
-        subtitle="O atalho funcionará mesmo com o Buddio minimizado no tray."
+        eyebrow={t("onboarding.eyebrow.hotkey")}
+        title={t("onboarding.hotkey.title")}
+        subtitle={t("onboarding.hotkey.subtitle")}
         step={5}
       />
 
@@ -1827,13 +1875,13 @@ function HotkeyScreen({
           <div className="min-w-0">
             <p className="truncate text-[14px] font-bold">{clip.name}</p>
             <p className="text-[12px] text-[var(--buddio-text-secondary)]">
-              {formatDuration(clip.durationMs)} · Chamadas
+              {formatDuration(clip.durationMs)} · {t("onboarding.hotkey.calls")}
             </p>
           </div>
           <Waveform peaks={clip.peaks} className="mx-4 hidden h-8 flex-1 sm:flex" />
           <button
             type="button"
-            aria-label="Tocar"
+            aria-label={t("onboarding.import.play")}
             className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[var(--buddio-brand)] text-white"
             onClick={onPlay}
           >
@@ -1842,13 +1890,13 @@ function HotkeyScreen({
         </div>
       ) : (
         <p className="mb-5 text-[13px] text-[var(--buddio-warning)]">
-          Importe um som na etapa anterior para definir o atalho.
+          {t("onboarding.hotkey.needImport")}
         </p>
       )}
 
       <section className="mb-4 max-w-xl rounded-[var(--radius-card)] border border-[var(--buddio-brand-border)] bg-[var(--buddio-surface)] p-5">
         <p className="mb-3 text-[13px] text-[var(--buddio-text-secondary)]">
-          Pressione a combinação desejada
+          {t("onboarding.hotkey.pressCombo")}
         </p>
         <button
           type="button"
@@ -1861,14 +1909,14 @@ function HotkeyScreen({
           )}
         >
           {listening
-            ? "Aguardando combinação…"
+            ? t("hotkey.waiting")
             : hotkey
               ? displayHotkey(hotkey)
-              : "Clique e pressione as teclas"}
+              : t("onboarding.hotkey.clickPress")}
         </button>
         {hotkey && !listening ? (
           <p className="mt-3 flex items-center gap-1.5 text-[13px] font-semibold text-[var(--buddio-success)]">
-            <Check size={14} weight="bold" /> Atalho disponível
+            <Check size={14} weight="bold" /> {t("onboarding.hotkey.available")}
           </p>
         ) : null}
         {error ? (
@@ -1879,17 +1927,17 @@ function HotkeyScreen({
       <div className="max-w-xl rounded-[14px] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] px-4 py-3">
         <p className="flex items-center gap-2 text-[13px] font-semibold">
           <span className="size-2 rounded-full bg-[var(--buddio-success)]" />
-          Atalhos globais serão ativados quando o Buddio iniciar.
+          {t("onboarding.hotkey.willEnable")}
         </p>
         <p className="mt-1 text-[12px] text-[var(--buddio-text-secondary)]">
-          Você poderá alterar este comportamento nas configurações.
+          {t("onboarding.hotkey.changeLater")}
         </p>
       </div>
 
       <FooterNav
         onBack={onBack}
         onNext={onSave}
-        nextLabel="Salvar atalho"
+        nextLabel={t("onboarding.hotkey.save")}
         nextDisabled={!clip || !hotkey}
       />
     </div>
@@ -1919,22 +1967,23 @@ function ReadyScreen({
   onStartMinimized: (v: boolean) => void;
   onOpen: () => void;
 }) {
+  const t = useT();
   return (
     <div>
       <ThemeStepHeader
-        eyebrow="CONFIGURAÇÃO CONCLUÍDA"
-        title="Tudo pronto para tocar."
-        subtitle="Seu áudio está roteado, o primeiro som foi importado e o atalho global está ativo."
+        eyebrow={t("onboarding.eyebrow.done")}
+        title={t("onboarding.ready.title")}
+        subtitle={t("onboarding.ready.subtitle")}
         success
       />
 
       <section className="mb-4 max-w-xl rounded-[var(--radius-card)] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] p-5">
-        <p className="mb-2 text-[15px] font-bold">Resumo</p>
-        <SummaryRow label="Saída" value={monitorLabel} />
-        <SummaryRow label="Microfone" value={micLabel} />
-        <SummaryRow label="Rota" value={virtualLabel} />
+        <p className="mb-2 text-[15px] font-bold">{t("onboarding.ready.summary")}</p>
+        <SummaryRow label={t("onboarding.ready.output")} value={monitorLabel} />
+        <SummaryRow label={t("routing.mic")} value={micLabel} />
+        <SummaryRow label={t("onboarding.ready.route")} value={virtualLabel} />
         <SummaryRow
-          label="Primeiro som"
+          label={t("onboarding.step.firstSound")}
           value={`${clipName}${hotkey ? ` · ${displayHotkey(hotkey)}` : ""}`}
         />
       </section>
@@ -1942,10 +1991,10 @@ function ReadyScreen({
       <div className="mb-6 flex max-w-xl items-center justify-between gap-4 rounded-[14px] border border-[var(--buddio-brand-border)] bg-[var(--buddio-brand-soft)] px-4 py-3">
         <div>
           <p className="text-[14px] font-semibold text-[var(--buddio-brand-deep)]">
-            Buddio Mini no tray
+            {t("onboarding.ready.miniTitle")}
           </p>
           <p className="mt-0.5 text-[13px] text-[var(--buddio-text-secondary)]">
-            Acesse seus sons fixados sem abrir a janela completa.
+            {t("onboarding.ready.miniBody")}
           </p>
         </div>
         <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--buddio-brand)] font-brand text-[16px] font-bold text-white">
@@ -1956,23 +2005,23 @@ function ReadyScreen({
       <div className="flex max-w-xl flex-wrap items-end justify-between gap-4">
         <div>
           <Toggle
-            label="Iniciar com o Windows"
+            label={t("onboarding.ready.launchWindows")}
             checked={launchWithWindows}
             onChange={onLaunchWindows}
           />
           <div className="mt-2">
             <Toggle
-              label="Iniciar minimizado na bandeja"
+              label={t("settings.startMinimized")}
               checked={startMinimized}
               onChange={onStartMinimized}
             />
           </div>
           <p className="mt-2 text-[12px] text-[var(--buddio-text-muted)]">
-            Você pode refazer o teste a qualquer momento em Roteamento.
+            {t("onboarding.ready.redoHint")}
           </p>
         </div>
         <Button variant="primary" className="h-11 px-5" onClick={onOpen}>
-          Abrir soundboard
+          {t("onboarding.ready.openSoundboard")}
         </Button>
       </div>
     </div>
@@ -2033,6 +2082,7 @@ function LevelMeter({
     message: string | null,
   ) => void;
 }) {
+  const t = useT();
   const barCount = 14;
   const [levels, setLevels] = useState<number[]>(() =>
     Array.from({ length: barCount }, () => 0.08),
@@ -2111,7 +2161,7 @@ function LevelMeter({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(meterLevel * 100)}
-        aria-label="Nível do microfone"
+        aria-label={t("onboarding.micLevelAria")}
       >
         {levels.map((level, i) => (
           <span

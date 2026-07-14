@@ -221,6 +221,10 @@ export async function setTheme(theme: string) {
   unwrap(await commands.setTheme(theme));
 }
 
+export async function setLocale(locale: string) {
+  unwrap(await commands.setLocale(locale));
+}
+
 export async function setOnboardingDone(done: boolean) {
   unwrap(await commands.setOnboardingDone(done));
 }

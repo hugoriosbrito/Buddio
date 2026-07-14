@@ -2,7 +2,8 @@
 
 use std::path::PathBuf;
 
-use tauri::{AppHandle, Manager, State};
+use serde_json::json;
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::fake_devices;
@@ -152,7 +153,10 @@ pub async fn add_watched_folder(
         })
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "nenhuma pasta selecionada".to_string())?
+        .ok_or_else(|| {
+            let locale = state.settings.locale().unwrap_or_else(|_| "en".into());
+            crate::i18n::t(&locale, "err.no_folder")
+        })?
     };
 
     let folder_watch = state.folder_watch.clone();
@@ -245,9 +249,7 @@ fn resolve_test_sample_path(app: &AppHandle) -> CmdResult<PathBuf> {
         }
     }
 
-    Err(format!(
-        "Amostra de teste não encontrada ({TEST_SAMPLE_REL}). Recompile o app com resources/samples."
-    ))
+    Err(crate::i18n::t("en", "err.test_sample_missing"))
 }
 
 #[tauri::command]
@@ -725,6 +727,14 @@ pub fn set_theme(state: State<'_, AppState>, theme: String) -> CmdResult<()> {
 
 #[tauri::command]
 #[specta::specta]
+pub fn set_locale(app: AppHandle, state: State<'_, AppState>, locale: String) -> CmdResult<()> {
+    state.settings.set_locale(&locale).map_err(map_err)?;
+    let _ = app.emit("settings-changed", json!({ "locale": locale }));
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn set_onboarding_done(state: State<'_, AppState>, done: bool) -> CmdResult<()> {
     state.settings.set_onboarding_done(done).map_err(map_err)
 }
@@ -847,6 +857,51 @@ pub fn hide_mini_window(app: AppHandle) -> CmdResult<()> {
     Ok(())
 }
 
+/// Resize the Mini window (full vertical vs ultra-compact horizontal bar).
+/// Done on the Rust side because JS `setSize` is unreliable for undecorated
+/// windows on Windows — the previous compact layout left a tall empty frame.
+#[tauri::command]
+#[specta::specta]
+pub fn resize_mini_window(
+    app: AppHandle,
+    width: f64,
+    height: f64,
+    min_width: f64,
+    min_height: f64,
+    compact: bool,
+) -> CmdResult<()> {
+    use tauri::{LogicalSize, Size};
+
+    let mini = app
+        .get_webview_window("mini")
+        .ok_or_else(|| "mini window missing".to_string())?;
+
+    // Drop old constraints so we can shrink below the previous vertical min.
+    let _ = mini.set_max_size(None::<Size>);
+    mini.set_min_size(None::<Size>).map_err(map_err)?;
+
+    mini.set_size(Size::Logical(LogicalSize::new(width, height)))
+        .map_err(map_err)?;
+
+    // Confirm / force with physical pixels (DPI-safe) if still not applied.
+    if let (Ok(current), Ok(scale)) = (mini.inner_size(), mini.scale_factor()) {
+        let target_w = (width * scale).round() as u32;
+        let target_h = (height * scale).round() as u32;
+        if current.width.abs_diff(target_w) > 2 || current.height.abs_diff(target_h) > 2 {
+            use tauri::PhysicalSize;
+            mini.set_size(Size::Physical(PhysicalSize::new(target_w, target_h)))
+                .map_err(map_err)?;
+        }
+    }
+
+    mini.set_min_size(Some(Size::Logical(LogicalSize::new(min_width, min_height))))
+        .map_err(map_err)?;
+    // Lock compact bar; keep the full Mini resizable.
+    mini.set_resizable(!compact).map_err(map_err)?;
+
+    Ok(())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn get_virtual_cable_status(state: State<'_, AppState>) -> CmdResult<VirtualCableStatusDto> {
@@ -892,22 +947,32 @@ pub async fn ensure_virtual_cable(app: AppHandle) -> CmdResult<VirtualCableEnsur
         )
         .is_err()
     {
-        return Err(
-            "Já existe uma verificação/instalação do cabo virtual em andamento. Aguarde terminar."
-                .to_string(),
-        );
+        let locale = state
+            .settings
+            .locale()
+            .unwrap_or_else(|_| "en".into());
+        return Err(crate::i18n::t(&locale, "err.virtual_busy"));
     }
     let busy = state.virtual_cable_busy.clone();
     let settings_mgr = state.settings.clone();
     let audio = state.audio.clone();
     let app_for_block = app.clone();
+    let locale = state
+        .settings
+        .locale()
+        .unwrap_or_else(|_| "en".into());
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         let _busy_guard = VirtualCableBusyGuard(busy);
         ensure_virtual_cable_blocking(app_for_block, settings_mgr, audio)
     })
     .await
-    .map_err(|e| format!("instalação do cabo virtual interrompida: {e}"))?;
+    .map_err(|e| {
+        format!(
+            "{}: {e}",
+            crate::i18n::t(&locale, "err.virtual_interrupted")
+        )
+    })?;
 
     result
 }
@@ -918,6 +983,7 @@ fn ensure_virtual_cable_blocking(
     audio: audio_engine::AudioEngineHandle,
 ) -> CmdResult<VirtualCableEnsureResult> {
     let settings = settings_mgr.load().map_err(map_err)?;
+    let locale = settings.locale.clone();
     let pending = settings_mgr.pending_virtual_setup().map_err(map_err)?;
 
     let mut status = virtual_cable::build_status(
@@ -960,16 +1026,15 @@ fn ensure_virtual_cable_blocking(
                     pending_after_reboot: true,
                     ..status
                 },
-                message: "VB-CABLE instalado. Reinicie o Windows e abra o Buddio de novo para concluir a rota.".into(),
+                message: crate::i18n::t(&locale, "msg.virtual_reboot"),
                 reboot_required: true,
             });
         }
     }
 
-    let playback = status
-        .playback_device
-        .clone()
-        .ok_or_else(|| "cabo virtual não encontrado após a instalação".to_string())?;
+    let playback = status.playback_device.clone().ok_or_else(|| {
+        crate::i18n::t(&locale, "err.virtual_missing_after_install")
+    })?;
 
     // After install Windows often makes VB-CABLE the default Speakers device.
     // Monitor must be a *physical* output — opening Speakers (VB-Audio) + the
@@ -1020,8 +1085,13 @@ fn ensure_virtual_cable_blocking(
 
     Ok(VirtualCableEnsureResult {
         message: format!(
-            "Rota pronta: voz + sons vão para {playback}. No Discord/Zoom, escolha {} como microfone. Dica: desative a supressão de ruído do Discord para músicas longas.",
-            status.capture_hint
+            "{} {playback}. {}",
+            crate::i18n::t(&locale, "msg.virtual_ready_prefix"),
+            crate::i18n::tf(
+                &locale,
+                "msg.virtual_ready_suffix",
+                &[("capture", status.capture_hint.as_str())],
+            ),
         ),
         reboot_required: false,
         status,

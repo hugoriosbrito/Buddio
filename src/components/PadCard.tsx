@@ -1,5 +1,6 @@
 import { Pause, Play, Repeat, WarningCircle } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
+import { useT } from "../i18n";
 import type { ClipDto } from "../lib/api";
 import { cn } from "../lib/cn";
 import { ClipIcon } from "./ClipIcon";
@@ -32,6 +33,7 @@ export function PadCard({
   onPlayToggle,
   onSelect,
 }: Props) {
+  const t = useT();
   const wasPlaying = useRef(playing);
   const [pulse, setPulse] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -104,7 +106,7 @@ export function PadCard({
             {error ? (
               <>
                 <WarningCircle size={12} weight="fill" />
-                Saída indisponível
+                {t("pad.outputUnavailable")}
               </>
             ) : (
               formatDuration(clip.durationMs)
@@ -119,7 +121,7 @@ export function PadCard({
       <div className="flex items-center justify-end">
         <button
           type="button"
-          aria-label={playing ? "Parar" : "Tocar"}
+          aria-label={playing ? t("inspector.stop") : t("inspector.play")}
           aria-pressed={playing}
           onClick={(e) => {
             e.stopPropagation();

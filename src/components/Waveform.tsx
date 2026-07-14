@@ -1,4 +1,5 @@
 import { useCallback, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { useT } from "../i18n";
 import { cn } from "../lib/cn";
 
 type Props = {
@@ -45,6 +46,7 @@ export function Waveform({
   interactive = false,
   onTrimChange,
 }: Props) {
+  const t = useT();
   const bars = peaks && peaks.length > 0 ? peaks : PLACEHOLDER;
   const duration = Math.max(durationMs, 1);
   const endMs = trimEndMs ?? duration;
@@ -190,7 +192,7 @@ export function Waveform({
           {/* Handle início */}
           <button
             type="button"
-            aria-label="Início do trim"
+            aria-label={t("waveform.trimStart")}
             className="absolute inset-y-0 z-10 w-3 -translate-x-1/2 cursor-ew-resize touch-none border-0 bg-transparent p-0"
             style={{ left: `${startPct}%` }}
             onPointerDown={beginDrag("start")}
@@ -202,7 +204,7 @@ export function Waveform({
           {/* Handle fim */}
           <button
             type="button"
-            aria-label="Fim do trim"
+            aria-label={t("waveform.trimEnd")}
             className="absolute inset-y-0 z-10 w-3 -translate-x-1/2 cursor-ew-resize touch-none border-0 bg-transparent p-0"
             style={{ left: `${endPct}%` }}
             onPointerDown={beginDrag("end")}

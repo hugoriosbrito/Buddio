@@ -1,6 +1,7 @@
 mod commands;
 mod db;
 mod fake_devices;
+mod i18n;
 mod managers;
 mod models;
 
@@ -107,6 +108,7 @@ pub fn run() {
             commands::apply_profile,
             commands::get_diagnostics,
             commands::set_theme,
+            commands::set_locale,
             commands::set_onboarding_done,
             commands::set_mic_mix,
             commands::set_mic_route,
@@ -117,6 +119,7 @@ pub fn run() {
             commands::set_pinned_clips,
             commands::show_mini_window,
             commands::hide_mini_window,
+            commands::resize_mini_window,
             commands::get_virtual_cable_status,
             commands::ensure_virtual_cable,
             commands::list_watched_folders,
@@ -312,13 +315,35 @@ pub fn run() {
             }
 
             // System tray → Buddio Mini
-            let show_mini_item =
-                MenuItem::with_id(app, "show_mini", "Abrir Buddio Mini", true, None::<&str>)?;
-            let show_main_item =
-                MenuItem::with_id(app, "show_main", "Abrir Buddio", true, None::<&str>)?;
-            let stop_all_item =
-                MenuItem::with_id(app, "stop_all", "Parar tudo", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
+            let tray_locale = loaded.locale.as_str();
+            let show_mini_item = MenuItem::with_id(
+                app,
+                "show_mini",
+                crate::i18n::t(tray_locale, "tray.show_mini"),
+                true,
+                None::<&str>,
+            )?;
+            let show_main_item = MenuItem::with_id(
+                app,
+                "show_main",
+                crate::i18n::t(tray_locale, "tray.show_main"),
+                true,
+                None::<&str>,
+            )?;
+            let stop_all_item = MenuItem::with_id(
+                app,
+                "stop_all",
+                crate::i18n::t(tray_locale, "tray.stop_all"),
+                true,
+                None::<&str>,
+            )?;
+            let quit_item = MenuItem::with_id(
+                app,
+                "quit",
+                crate::i18n::t(tray_locale, "tray.quit"),
+                true,
+                None::<&str>,
+            )?;
             let menu = Menu::with_items(
                 app,
                 &[&show_mini_item, &show_main_item, &stop_all_item, &quit_item],

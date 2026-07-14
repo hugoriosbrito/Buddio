@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import { useT } from "../i18n";
 
 /** True if the clip emoji field holds an image URL (custom pad icon). */
 export function isIconUrl(value: string | null | undefined): boolean {
@@ -18,12 +19,13 @@ export function ClipIcon({
   className?: string;
   onClick?: (e: MouseEvent) => void;
 }) {
+  const t = useT();
   const value = emoji?.trim() || null;
   if (value && isIconUrl(value)) {
     return (
       <button
         type="button"
-        aria-label="Tocar"
+        aria-label={t("inspector.play")}
         className={className}
         onClick={onClick}
         style={{ width: size, height: size }}
@@ -42,7 +44,7 @@ export function ClipIcon({
     return (
       <button
         type="button"
-        aria-label="Tocar"
+        aria-label={t("inspector.play")}
         className={className}
         onClick={onClick}
         style={{ fontSize: Math.round(size * 0.65), lineHeight: 1 }}

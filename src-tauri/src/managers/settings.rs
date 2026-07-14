@@ -14,6 +14,7 @@ const KEY_MONITOR: &str = "monitor_device";
 const KEY_SECONDARY: &str = "secondary_device";
 const KEY_STOP_ALL: &str = "stop_all_hotkey";
 const KEY_THEME: &str = "theme";
+const KEY_LOCALE: &str = "locale";
 const KEY_ACTIVE_PROFILE: &str = "active_profile_id";
 const KEY_ONBOARDING_DONE: &str = "onboarding_done";
 const KEY_MIC_MIX: &str = "mic_mix_enabled";
@@ -104,6 +105,10 @@ impl SettingsManager {
                 .get(KEY_THEME)?
                 .filter(|t| t == "light" || t == "dark")
                 .unwrap_or_else(|| "light".into()),
+            locale: self
+                .get(KEY_LOCALE)?
+                .filter(|l| l == "en" || l == "pt")
+                .unwrap_or_else(|| "en".into()),
             active_profile_id: self.get(KEY_ACTIVE_PROFILE)?,
             onboarding_done: self
                 .get(KEY_ONBOARDING_DONE)?
@@ -151,6 +156,7 @@ impl SettingsManager {
             None => self.delete(KEY_STOP_ALL)?,
         }
         self.set(KEY_THEME, &settings.theme)?;
+        self.set(KEY_LOCALE, &settings.locale)?;
         match &settings.active_profile_id {
             Some(v) => self.set(KEY_ACTIVE_PROFILE, v)?,
             None => self.delete(KEY_ACTIVE_PROFILE)?,
@@ -194,6 +200,20 @@ impl SettingsManager {
             bail!("theme must be 'light' or 'dark'");
         }
         self.set(KEY_THEME, theme)
+    }
+
+    pub fn set_locale(&self, locale: &str) -> Result<()> {
+        if locale != "en" && locale != "pt" {
+            bail!("locale must be 'en' or 'pt'");
+        }
+        self.set(KEY_LOCALE, locale)
+    }
+
+    pub fn locale(&self) -> Result<String> {
+        Ok(self
+            .get(KEY_LOCALE)?
+            .filter(|l| l == "en" || l == "pt")
+            .unwrap_or_else(|| "en".into()))
     }
 
     pub fn set_active_profile_id(&self, id: Option<&str>) -> Result<()> {

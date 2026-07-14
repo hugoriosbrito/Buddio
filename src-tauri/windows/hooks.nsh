@@ -57,7 +57,7 @@
   ${If} $R7 == ""
     DetailPrint "VB-CABLE pack missing from installer resources — skip."
     MessageBox MB_ICONEXCLAMATION|MB_OK \
-      "O pacote VB-CABLE nao veio no instalador.$\r$\n$\r$\nVoce ainda pode ativar a rota pelo Buddio (download sob demanda).$\r$\n$\r$\nVB-CABLE is VB-Audio donationware: https://vb-cable.com"
+      "The VB-CABLE package was missing from the installer.$\r$\n$\r$\nYou can still enable the route from Buddio (on-demand download).$\r$\n$\r$\nVB-CABLE is VB-Audio donationware: https://vb-cable.com"
     Goto buddio_vbcable_post_done
   ${EndIf}
 
@@ -83,7 +83,7 @@
   DetailPrint "Marked VB-CABLE as installed by Buddio."
 
   MessageBox MB_ICONINFORMATION|MB_OK \
-    "O Buddio instalou o VB-CABLE (cabo virtual de audio da VB-Audio).$\r$\n$\r$\nReinicie o Windows se o Discord/Zoom ainda nao listar CABLE Output.$\r$\n$\r$\nVB-CABLE e donationware: https://vb-cable.com"
+    "Buddio installed VB-CABLE (VB-Audio virtual audio cable).$\r$\n$\r$\nRestart Windows if Discord/Zoom still does not list CABLE Output.$\r$\n$\r$\nVB-CABLE is donationware: https://vb-cable.com"
 
   buddio_vbcable_post_done:
 !macroend
@@ -100,7 +100,7 @@
   ${If} $R7 == ""
     DetailPrint "Bundled VB-CABLE setup missing — cannot auto-uninstall the driver."
     MessageBox MB_ICONEXCLAMATION|MB_OK \
-      "O Buddio nao encontrou o desinstalador do VB-CABLE.$\r$\nRemova o driver manualmente em Configuracoes de Som / Gerenciador de Dispositivos se quiser."
+      "Buddio could not find the VB-CABLE uninstaller.$\r$\nRemove the driver manually in Sound settings / Device Manager if you want."
     Goto buddio_vbcable_clear_owned
   ${EndIf}
 
@@ -117,7 +117,7 @@
   DetailPrint "VB-CABLE uninstall exit code: $0"
 
   MessageBox MB_ICONINFORMATION|MB_OK \
-    "O VB-CABLE instalado pelo Buddio foi removido.$\r$\nReinicie o Windows para concluir a remocao do driver."
+    "The VB-CABLE installed by Buddio was removed.$\r$\nRestart Windows to finish removing the driver."
 
   buddio_vbcable_clear_owned:
   DeleteRegValue HKLM "${BUDDIO_VBCABLE_REG}" "${BUDDIO_VBCABLE_OWNED}"
