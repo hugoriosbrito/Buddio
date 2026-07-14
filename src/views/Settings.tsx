@@ -176,15 +176,15 @@ export function SettingsView() {
           });
           break;
         case "update_available":
-          // Modal + titlebar badge handle the primary UX; toast is a backup.
+          // Modal is the primary install path; toast re-opens it.
           push({
             kind: "info",
             message: t("settings.update.available", {
               current: result.current,
               latest: result.latest,
             }),
-            actionLabel: t("settings.update.openGithub"),
-            onAction: () => void openExternal(result.url),
+            actionLabel: t("settings.update.openUpdate"),
+            onAction: () => useUpdateStore.getState().setModalOpen(true),
           });
           break;
         case "unavailable":

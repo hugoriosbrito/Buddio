@@ -1,7 +1,7 @@
 # In-app NSIS auto-update — design
 
 **Date:** 2026-07-14  
-**Status:** Approved (awaiting implementation)  
+**Status:** Implemented  
 **Approach:** B — download official NSIS setup from GitHub Releases and silent-install
 
 ## Problem

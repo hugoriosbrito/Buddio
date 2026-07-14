@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import * as api from "../lib/api";
 import {
   APP_VERSION,
   checkForUpdates,
@@ -12,15 +13,24 @@ export type AvailableUpdate = {
   current: string;
   latest: string;
   url: string;
+  downloadUrl: string | null;
 };
+
+export type UpdateInstallPhase = "idle" | "downloading" | "installing" | "error";
 
 type UpdateState = {
   available: AvailableUpdate | null;
   checking: boolean;
   modalOpen: boolean;
+  phase: UpdateInstallPhase;
+  progress: { received: number; total: number | null } | null;
+  error: string | null;
   setModalOpen: (open: boolean) => void;
   dismissModal: () => void;
   clearAvailable: () => void;
+  setProgress: (progress: { received: number; total: number | null }) => void;
+  resetInstall: () => void;
+  startInstall: () => Promise<void>;
   applyCheckResult: (
     result: UpdateCheckResult,
     options?: { openModal?: boolean },
@@ -67,20 +77,68 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   available: null,
   checking: false,
   modalOpen: false,
+  phase: "idle",
+  progress: null,
+  error: null,
 
   setModalOpen: (open) => set({ modalOpen: open }),
 
   dismissModal: () => {
-    const available = get().available;
+    const { available, phase } = get();
+    if (phase === "downloading" || phase === "installing") return;
     if (available) writeDismissedVersion(available.latest);
     set({ modalOpen: false });
   },
 
-  clearAvailable: () => set({ available: null, modalOpen: false }),
+  clearAvailable: () =>
+    set({
+      available: null,
+      modalOpen: false,
+      phase: "idle",
+      progress: null,
+      error: null,
+    }),
+
+  setProgress: (progress) => set({ progress, phase: "downloading" }),
+
+  resetInstall: () =>
+    set({ phase: "idle", progress: null, error: null }),
+
+  startInstall: async () => {
+    const available = get().available;
+    if (!available?.downloadUrl) {
+      set({
+        phase: "error",
+        error: "no_installer",
+      });
+      return;
+    }
+    set({
+      phase: "downloading",
+      error: null,
+      progress: { received: 0, total: null },
+      modalOpen: true,
+    });
+    try {
+      await api.startNsisUpdate(available.latest, available.downloadUrl);
+      set({ phase: "installing" });
+    } catch (e) {
+      set({
+        phase: "error",
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
 
   applyCheckResult: (result, options) => {
     if (result.status !== "update_available") {
-      set({ available: null, modalOpen: false });
+      set({
+        available: null,
+        modalOpen: false,
+        phase: "idle",
+        progress: null,
+        error: null,
+      });
       return;
     }
 
@@ -88,8 +146,9 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
       current: result.current,
       latest: result.latest,
       url: result.url,
+      downloadUrl: result.downloadUrl,
     };
-    set({ available });
+    set({ available, phase: "idle", progress: null, error: null });
 
     const shouldOpen =
       options?.openModal === true ||

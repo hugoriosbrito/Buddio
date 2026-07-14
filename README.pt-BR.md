@@ -57,7 +57,7 @@ segundo".
 - 🪟 **Buddio Mini**: um painel aconchegante na bandeja do sistema pra disparar seus sons fixados sem abrir a janela completa, com um modo Ultra Compact pra quatro favoritos
 - 🚀 **Configuração guiada**: um assistente simpático no primeiro uso te leva por saída, microfone, roteamento, primeiro som e primeiro atalho
 - 🌐 **Inglês e português**: o idioma da UI começa em inglês; troque quando quiser em Configurações → Aparência
-- ⬆️ **Checagem de atualizações**: na abertura, o Buddio consulta os GitHub Releases em silêncio e avisa quando há versão nova
+- ⬆️ **Atualizações in-app**: consulta os GitHub Releases e pode baixar + instalar o setup do Windows sem abrir o navegador
 - 🌓 **Temas claro e escuro** que parecem de verdade desenhados, não só invertidos
 - 🔒 **Privado por padrão**: sua biblioteca vive num arquivo local; o áudio nunca sai do seu computador
 

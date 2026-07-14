@@ -9,10 +9,18 @@ export function UpdateAvailableModal() {
   const t = useT();
   const available = useUpdateStore((s) => s.available);
   const open = useUpdateStore((s) => s.modalOpen);
+  const phase = useUpdateStore((s) => s.phase);
+  const progress = useUpdateStore((s) => s.progress);
+  const error = useUpdateStore((s) => s.error);
   const dismissModal = useUpdateStore((s) => s.dismissModal);
   const setModalOpen = useUpdateStore((s) => s.setModalOpen);
+  const startInstall = useUpdateStore((s) => s.startInstall);
+  const resetInstall = useUpdateStore((s) => s.resetInstall);
 
   if (!available) return null;
+
+  const busy = phase === "downloading" || phase === "installing";
+  const canInstall = Boolean(available.downloadUrl);
 
   const openRelease = async () => {
     try {
@@ -22,25 +30,75 @@ export function UpdateAvailableModal() {
     }
   };
 
+  const percent =
+    progress?.total && progress.total > 0
+      ? Math.min(100, Math.round((progress.received / progress.total) * 100))
+      : null;
+
+  const errorMessage =
+    error === "no_installer" ? t("update.noInstaller") : error;
+
   return (
     <Modal
       open={open}
-      onClose={() => setModalOpen(false)}
+      onClose={() => {
+        if (busy) return;
+        setModalOpen(false);
+      }}
+      closeOnEsc={!busy}
       title={t("update.modalTitle")}
       description={t("update.modalSubtitle")}
       className="max-w-[440px]"
       footer={
         <>
-          <Button variant="ghost" onClick={dismissModal}>
-            {t("update.later")}
-          </Button>
-          <Button
-            variant="primary"
-            icon={<ArrowSquareOut size={16} weight="bold" />}
-            onClick={() => void openRelease()}
-          >
-            {t("update.openRelease")}
-          </Button>
+          {!busy && (
+            <Button variant="ghost" onClick={dismissModal}>
+              {t("update.later")}
+            </Button>
+          )}
+          {(phase === "idle" || phase === "error") && (
+            <Button
+              variant="ghost"
+              icon={<ArrowSquareOut size={16} weight="bold" />}
+              onClick={() => void openRelease()}
+            >
+              {t("update.openGithubFallback")}
+            </Button>
+          )}
+          {phase === "error" ? (
+            <Button
+              variant="primary"
+              icon={<ArrowsClockwise size={16} weight="bold" />}
+              onClick={() => {
+                resetInstall();
+                if (canInstall) void startInstall();
+                else void openRelease();
+              }}
+            >
+              {canInstall ? t("update.retry") : t("update.openGithubFallback")}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              icon={<ArrowsClockwise size={16} weight="bold" />}
+              disabled={busy}
+              onClick={() => {
+                if (canInstall) void startInstall();
+                else void openRelease();
+              }}
+            >
+              {busy
+                ? phase === "installing"
+                  ? t("update.installing")
+                  : t("update.downloading", {
+                      percent:
+                        percent !== null ? `${percent}%` : "…",
+                    })
+                : canInstall
+                  ? t("update.now")
+                  : t("update.openRelease")}
+            </Button>
+          )}
         </>
       }
     >
@@ -54,7 +112,11 @@ export function UpdateAvailableModal() {
             }}
           />
           <div className="relative flex size-12 shrink-0 items-center justify-center rounded-[16px] bg-[var(--buddio-brand-soft)] text-[var(--buddio-brand)]">
-            <ArrowsClockwise size={26} weight="duotone" />
+            <ArrowsClockwise
+              size={26}
+              weight="duotone"
+              className={busy ? "animate-spin" : undefined}
+            />
             <span
               aria-hidden
               className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-[var(--buddio-danger)] ring-2 ring-[var(--buddio-window)] animate-update-badge"
@@ -65,10 +127,49 @@ export function UpdateAvailableModal() {
               {t("update.modalHeadline", { version: available.latest })}
             </p>
             <p className="mt-1 text-[13px] text-[var(--buddio-text-secondary)]">
-              {t("update.modalBody")}
+              {phase === "installing"
+                ? t("update.installing")
+                : phase === "downloading"
+                  ? t("update.downloading", {
+                      percent: percent !== null ? `${percent}%` : "…",
+                    })
+                  : t("update.modalBody")}
             </p>
+            {errorMessage && phase === "error" && (
+              <p className="mt-2 text-[12px] text-[var(--buddio-danger)]">
+                {errorMessage}
+              </p>
+            )}
           </div>
         </div>
+
+        {(phase === "downloading" || phase === "installing") && (
+          <div className="border-t border-[var(--buddio-border-subtle)] px-4 py-3">
+            <div
+              className="h-2 overflow-hidden rounded-full bg-[var(--buddio-surface)]"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={percent ?? undefined}
+            >
+              <div
+                className="h-full rounded-full bg-[var(--buddio-brand)] transition-[width] duration-200"
+                style={{
+                  width:
+                    phase === "installing"
+                      ? "100%"
+                      : percent !== null
+                        ? `${percent}%`
+                        : "35%",
+                  animation:
+                    percent === null && phase === "downloading"
+                      ? "pulse 1.2s ease-in-out infinite"
+                      : undefined,
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-t border-[var(--buddio-border-subtle)] px-4 py-3">
           <VersionChip

@@ -135,6 +135,18 @@ function MainApp() {
       unlistens.push(fn);
     });
 
+    void listen<{ received: number; total?: number | null }>(
+      "update-download-progress",
+      (event) => {
+        useUpdateStore.getState().setProgress({
+          received: event.payload.received,
+          total: event.payload.total ?? null,
+        });
+      },
+    ).then((fn) => {
+      unlistens.push(fn);
+    });
+
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.code === "KeyK") {
         e.preventDefault();

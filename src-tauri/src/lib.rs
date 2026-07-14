@@ -122,6 +122,7 @@ pub fn run() {
             commands::resize_mini_window,
             commands::get_virtual_cable_status,
             commands::ensure_virtual_cable,
+            commands::start_nsis_update,
             commands::list_watched_folders,
             commands::add_watched_folder,
             commands::remove_watched_folder,

@@ -23,9 +23,10 @@ Installer: `target/release/bundle/nsis/Buddio_*_x64-setup.exe`.
 
 Without a certificate, Windows SmartScreen may warn on first install. This is
 about signing the `.exe`/NSIS installer itself — unrelated to
-`TAURI_SIGNING_PRIVATE_KEY`, which is for the Tauri in-app updater (out of
-scope for 1.0; see the plan's "Fora de escopo" section — we only do a manual
-GitHub-releases check).
+`TAURI_SIGNING_PRIVATE_KEY`, which is for the official Tauri updater plugin
+(still deferred). Buddio ships a **custom NSIS in-app update**: the UI checks
+GitHub Releases, downloads `Buddio_*_x64-setup.exe`, and runs
+`/S /UPDATE /R` (see `docs/superpowers/specs/2026-07-14-in-app-nsis-auto-update-design.md`).
 
 ### What you need
 

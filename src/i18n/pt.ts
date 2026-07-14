@@ -93,7 +93,7 @@ export const pt = {
   "settings.openGithub": "Abrir no GitHub",
   "settings.updates": "Atualizações",
   "settings.updatesHint":
-    "Consulta a release mais recente publicada no GitHub (incluindo release candidates).",
+    "Consulta os GitHub Releases e pode baixar + instalar o setup do Windows no app.",
   "settings.checkUpdates": "Verificar atualizações",
   "settings.checkingUpdates": "Verificando…",
   "settings.update.upToDate":
@@ -101,6 +101,7 @@ export const pt = {
   "settings.update.available":
     "Nova versão {latest} disponível (você tem {current}).",
   "settings.update.openGithub": "Abrir no GitHub",
+  "settings.update.openUpdate": "Atualizar",
 
   "routing.title": "Roteamento",
   "routing.subtitle":
@@ -604,11 +605,18 @@ export const pt = {
   "update.modalSubtitle": "Uma versão mais nova do Buddio está pronta.",
   "update.modalHeadline": "Buddio {version}",
   "update.modalBody":
-    "Instale o novo build no GitHub para correções e melhorias.",
+    "Baixe e instale este build para correções e melhorias. Sua biblioteca fica neste PC.",
   "update.current": "Instalada",
   "update.latest": "Nova",
   "update.later": "Depois",
+  "update.now": "Atualizar agora",
+  "update.downloading": "Baixando… {percent}",
+  "update.installing": "Instalando… o Buddio vai reiniciar.",
+  "update.retry": "Tentar de novo",
   "update.openRelease": "Ver atualização",
+  "update.openGithubFallback": "Abrir no GitHub",
+  "update.noInstaller":
+    "Nenhum instalador Windows foi encontrado neste release. Abra o GitHub para atualizar manualmente.",
   "update.bellAria": "Atualização disponível: versão {version}",
   "update.bellTitle": "Nova atualização {version}",
 

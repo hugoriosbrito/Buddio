@@ -291,3 +291,7 @@ export async function getVirtualCableStatus() {
 export async function ensureVirtualCable() {
   return unwrap(await commands.ensureVirtualCable());
 }
+
+export async function startNsisUpdate(version: string, downloadUrl: string) {
+  unwrap(await commands.startNsisUpdate(version, downloadUrl));
+}

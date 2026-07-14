@@ -88,7 +88,7 @@ export const en = {
   "settings.openGithub": "Open on GitHub",
   "settings.updates": "Updates",
   "settings.updatesHint":
-    "Checks the newest release on GitHub (including release candidates).",
+    "Checks GitHub Releases and can download + install the Windows setup in-app.",
   "settings.checkUpdates": "Check for updates",
   "settings.checkingUpdates": "Checking…",
   "settings.update.upToDate":
@@ -96,6 +96,7 @@ export const en = {
   "settings.update.available":
     "New version {latest} available (you have {current}).",
   "settings.update.openGithub": "Open on GitHub",
+  "settings.update.openUpdate": "Update",
 
   // Routing
   "routing.title": "Routing",
@@ -595,11 +596,18 @@ export const en = {
   "update.modalSubtitle": "A newer Buddio build is ready to download.",
   "update.modalHeadline": "Buddio {version}",
   "update.modalBody":
-    "Install the new build from GitHub to get fixes and improvements.",
+    "Download and install this build to get fixes and improvements. Your library stays on this PC.",
   "update.current": "Installed",
   "update.latest": "Latest",
   "update.later": "Later",
+  "update.now": "Update now",
+  "update.downloading": "Downloading… {percent}",
+  "update.installing": "Installing… Buddio will restart.",
+  "update.retry": "Try again",
   "update.openRelease": "View update",
+  "update.openGithubFallback": "Open on GitHub",
+  "update.noInstaller":
+    "No Windows installer was found for this release. Open GitHub to update manually.",
   "update.bellAria": "Update available: version {version}",
   "update.bellTitle": "New update {version}",
 

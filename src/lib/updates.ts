@@ -11,8 +11,53 @@ export const APP_VERSION = packageJson.version;
 
 export type UpdateCheckResult =
   | { status: "up_to_date"; current: string; latest: string }
-  | { status: "update_available"; current: string; latest: string; url: string }
+  | {
+      status: "update_available";
+      current: string;
+      latest: string;
+      url: string;
+      /** Windows NSIS setup URL when present on the release; null → GitHub-only fallback. */
+      downloadUrl: string | null;
+    }
   | { status: "unavailable"; current: string; reason: string };
+
+export type GithubReleaseAsset = {
+  name?: string;
+  browser_download_url?: string;
+};
+
+/** Tauri NSIS artifact naming: `Buddio_<version>_x64-setup.exe`. */
+export function isNsisSetupAssetName(name: string): boolean {
+  return /^buddio_.*_x64-setup\.exe$/i.test(name.trim());
+}
+
+export function isAllowedUpdateDownloadUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") return false;
+    return (
+      parsed.hostname === "github.com" ||
+      parsed.hostname === "objects.githubusercontent.com"
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function pickNsisAssetUrl(
+  assets: GithubReleaseAsset[] | undefined | null,
+): string | null {
+  if (!assets?.length) return null;
+  for (const asset of assets) {
+    const name = asset.name?.trim() ?? "";
+    const url = asset.browser_download_url?.trim() ?? "";
+    if (!name || !url) continue;
+    if (!isNsisSetupAssetName(name)) continue;
+    if (!isAllowedUpdateDownloadUrl(url)) continue;
+    return url;
+  }
+  return null;
+}
 
 type ParsedVersion = {
   core: number[];
@@ -98,6 +143,7 @@ type GithubRelease = {
   prerelease?: boolean;
   published_at?: string | null;
   created_at?: string;
+  assets?: GithubReleaseAsset[];
 };
 
 /**
@@ -185,6 +231,7 @@ export async function checkForUpdates(
         current,
         latest,
         url,
+        downloadUrl: pickNsisAssetUrl(newest.assets),
       };
     }
 
