@@ -115,7 +115,7 @@ impl SettingsManager {
             vad_sound_enabled: self
                 .get(KEY_VAD_SOUND)?
                 .map(|v| v != "0" && v != "false")
-                .unwrap_or(false),
+                .unwrap_or(true),
             voice_target_lufs: self
                 .get(KEY_VOICE_TARGET)?
                 .and_then(|v| v.parse().ok())

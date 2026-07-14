@@ -32,7 +32,7 @@ const defaults: AppSettings = {
   micMixEnabled: true,
   micRouteMode: "mix",
   duckingDb: -8,
-  vadSoundEnabled: false,
+  vadSoundEnabled: true,
   voiceTargetLufs: -16,
   indexHotkeysEnabled: false,
   micDevice: null,

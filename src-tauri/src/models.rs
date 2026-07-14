@@ -192,7 +192,7 @@ impl Default for AppSettings {
             mic_mix_enabled: true,
             mic_route_mode: MicRouteModeDto::Mix,
             ducking_db: -8.0,
-            vad_sound_enabled: false,
+            vad_sound_enabled: true,
             voice_target_lufs: -16.0,
             index_hotkeys_enabled: false,
             mic_device: None,

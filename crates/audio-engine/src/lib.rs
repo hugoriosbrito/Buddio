@@ -18,6 +18,7 @@ mod mic_meter;
 mod mic_mix;
 mod mic_route;
 mod source;
+mod vad;
 mod volume;
 
 pub use command::AudioCommand;

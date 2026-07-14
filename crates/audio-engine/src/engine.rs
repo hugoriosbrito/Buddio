@@ -4,7 +4,6 @@
 //! audio callback. All decoding happens on this command thread via [`crate::decode`].
 
 use std::collections::HashMap;
-use std::f32::consts::TAU;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -21,7 +20,14 @@ use crate::event::AudioEvent;
 use crate::mic_mix::{self, MicCapture, SharedMicGain};
 use crate::mic_route::MicRouteMode;
 use crate::source::CachedSource;
+use crate::vad::VadKeepaliveSource;
 use crate::volume::{clamp_gain, db_to_linear, effective_gain};
+
+const VAD_KEEPALIVE_ID: &str = "__vad_keepalive__";
+
+fn is_vad_clip_id(id: &str) -> bool {
+    id.starts_with("__vad")
+}
 
 /// One open output path (monitor or secondary).
 struct OutputPath {
@@ -116,7 +122,7 @@ impl EngineState {
             mic_capture: None,
             mic_sink: None,
             mic_gain: SharedMicGain::new(mic_mix::DEFAULT_MIC_MIX_GAIN),
-            vad_sound_enabled: false,
+            vad_sound_enabled: true,
         };
         state.open_monitor(None);
         state
@@ -128,7 +134,16 @@ impl EngineState {
     }
 
     fn active_playback_count(&self) -> usize {
-        self.playing.len()
+        self.playing
+            .keys()
+            .filter(|id| !is_vad_clip_id(id))
+            .count()
+    }
+
+    fn has_secondary_user_playback(&self) -> bool {
+        self.playing.iter().any(|(id, pb)| {
+            !is_vad_clip_id(id) && pb.secondary.as_ref().is_some_and(|s| !s.empty())
+        })
     }
 
     fn close_monitor(&mut self) {
@@ -368,6 +383,7 @@ impl EngineState {
             } => self.set_mic_route(mode, ducking_db, input_device),
             AudioCommand::SetVadSound { enabled } => {
                 self.vad_sound_enabled = enabled;
+                self.sync_vad_keepalive();
             }
         }
     }
@@ -427,46 +443,46 @@ impl EngineState {
         }
     }
 
-    fn play_vad_beep(&mut self) {
-        let Some(secondary) = self.secondary.as_ref() else {
+    /// Strong opening burst + soft formant pulses on secondary for the whole
+    /// clip — keeps Discord/Zoom VAD open past the first second (music).
+    fn start_vad_keepalive(&mut self) {
+        let Some((sample_rate, channels, handle)) = self.secondary.as_ref().map(|s| {
+            (s.sample_rate, s.channels, s.handle.clone())
+        }) else {
             return;
         };
-        let rate = secondary.sample_rate.max(8_000);
-        let channels = secondary.channels.max(1);
-        let duration_secs = 0.08f32;
-        let freq = 1000.0f32;
-        let n_frames = (rate as f32 * duration_secs) as usize;
-        let mut pcm = Vec::with_capacity(n_frames * channels as usize);
-        for i in 0..n_frames {
-            let t = i as f32 / rate as f32;
-            // Soft envelope to avoid clicks.
-            let env = if t < 0.01 {
-                t / 0.01
-            } else if t > duration_secs - 0.01 {
-                (duration_secs - t) / 0.01
-            } else {
-                1.0
-            };
-            let s = (TAU * freq * t).sin() * 0.35 * env;
-            for _ in 0..channels {
-                pcm.push(s);
-            }
+        // Replace any previous keepalive rather than stacking sinks.
+        self.stop_clip(VAD_KEEPALIVE_ID, false);
+
+        let source = VadKeepaliveSource::new(sample_rate, channels);
+        let Ok(sink) = Sink::try_new(&handle) else {
+            return;
+        };
+        sink.set_volume(1.0);
+        sink.append(source);
+        sink.play();
+        self.playing.insert(
+            VAD_KEEPALIVE_ID.into(),
+            ActivePlayback {
+                clip_id: VAD_KEEPALIVE_ID.into(),
+                clip_volume: 1.0,
+                monitor: None,
+                secondary: Some(sink),
+            },
+        );
+    }
+
+    fn sync_vad_keepalive(&mut self) {
+        if !self.vad_sound_enabled || self.secondary.is_none() {
+            self.stop_clip(VAD_KEEPALIVE_ID, false);
+            return;
         }
-        let clip = DecodedClip::from_pcm(pcm, rate, channels);
-        if let Some(sink) =
-            try_start_sink(&secondary.handle, &clip, false, 1.0, 0.0, None, None, None)
-        {
-            // Fire-and-forget: keep sink alive until empty via a short sleep is
-            // avoided — attach under a reserved id that poll_finished cleans up.
-            self.playing.insert(
-                "__vad__".into(),
-                ActivePlayback {
-                    clip_id: "__vad__".into(),
-                    clip_volume: 1.0,
-                    monitor: None,
-                    secondary: Some(sink),
-                },
-            );
+        if self.has_secondary_user_playback() {
+            if !self.playing.contains_key(VAD_KEEPALIVE_ID) {
+                self.start_vad_keepalive();
+            }
+        } else {
+            self.stop_clip(VAD_KEEPALIVE_ID, false);
         }
     }
 
@@ -494,12 +510,6 @@ impl EngineState {
         };
 
         self.ensure_outputs_alive();
-
-        if play_vad_preamble && self.vad_sound_enabled {
-            // Stop previous vad if still draining.
-            self.stop_clip("__vad__", false);
-            self.play_vad_beep();
-        }
 
         let clip_volume = volume.max(0.0) * gain_linear.unwrap_or(1.0).max(0.0);
         let gain = clamp_gain(effective_gain(self.master_volume, clip_volume));
@@ -570,6 +580,11 @@ impl EngineState {
                 secondary: secondary_sink,
             },
         );
+        // Keepalive must start (or keep running) for the whole secondary play —
+        // a one-shot beep is not enough for Discord VAD on longer music.
+        if play_vad_preamble && self.vad_sound_enabled {
+            self.sync_vad_keepalive();
+        }
         self.refresh_mic_gain_for_playback();
         self.emit(AudioEvent::PlaybackStarted { clip_id });
     }
@@ -577,10 +592,13 @@ impl EngineState {
     fn stop_clip(&mut self, clip_id: &str, emit_stopped: bool) {
         if let Some(pb) = self.playing.remove(clip_id) {
             pb.stop();
-            if emit_stopped && clip_id != "__vad__" {
+            if emit_stopped && !is_vad_clip_id(clip_id) {
                 self.emit(AudioEvent::PlaybackStopped {
                     clip_id: clip_id.to_string(),
                 });
+            }
+            if !is_vad_clip_id(clip_id) {
+                self.sync_vad_keepalive();
             }
             self.refresh_mic_gain_for_playback();
         }
@@ -597,22 +615,27 @@ impl EngineState {
         let finished: Vec<String> = self
             .playing
             .iter()
-            .filter(|(_, pb)| pb.is_finished())
+            .filter(|(id, pb)| {
+                // Keepalive is infinite — never treat it as finished by emptiness
+                // alone while user clips are still going; sync handles teardown.
+                if is_vad_clip_id(id) {
+                    return false;
+                }
+                pb.is_finished()
+            })
             .map(|(id, _)| id.clone())
             .collect();
 
         for id in finished.iter() {
             if let Some(pb) = self.playing.remove(id) {
-                // Ensure sinks are dropped/stopped.
                 pb.stop();
-                if id.as_str() != "__vad__" {
-                    self.emit(AudioEvent::PlaybackStopped {
-                        clip_id: pb.clip_id,
-                    });
-                }
+                self.emit(AudioEvent::PlaybackStopped {
+                    clip_id: pb.clip_id,
+                });
             }
         }
         if !finished.is_empty() {
+            self.sync_vad_keepalive();
             self.refresh_mic_gain_for_playback();
         }
     }

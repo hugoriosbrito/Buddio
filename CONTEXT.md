@@ -40,9 +40,11 @@ optional manual gain as an override.
 
 ## VAD sound
 
-A short beep played on the call path immediately before a clip, intended to
-wake Discord (or similar) voice-activity detection so the beginning of the clip
-is not clipped.
+A keep-alive on the call path while a clip plays: strong opening burst, then soft
+formant-like pulses for the whole duration. Intended to hold Discord/Zoom
+voice-activity detection open — a one-shot beep only wakes the gate for ~1s.
+Discord **noise suppression** (especially Krisp) still often destroys music;
+users should disable NS/echo cancellation for soundboard use.
 
 ## Secondary / virtual mic
 

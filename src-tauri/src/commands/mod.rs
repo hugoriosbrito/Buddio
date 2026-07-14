@@ -1008,16 +1008,19 @@ fn ensure_virtual_cable_blocking(
 
     // Voice + soundboard share CABLE Output in Discord when mic mix is on.
     let _ = settings_mgr.set_mic_route_mode(crate::models::MicRouteModeDto::Mix);
+    // Keep Discord-style VAD open for the whole clip (not just a one-shot beep).
+    let _ = settings_mgr.set_vad_sound_enabled(true);
     let settings = settings_mgr.load().map_err(map_err)?;
     let _ = audio.send(audio_engine::AudioCommand::SetMicRoute {
         mode: audio_engine::MicRouteMode::Mix,
         ducking_db: settings.ducking_db,
         input_device: settings.mic_device,
     });
+    let _ = audio.send(audio_engine::AudioCommand::SetVadSound { enabled: true });
 
     Ok(VirtualCableEnsureResult {
         message: format!(
-            "Rota pronta: voz + sons vão para {playback}. No Discord/Zoom, escolha {} como microfone.",
+            "Rota pronta: voz + sons vão para {playback}. No Discord/Zoom, escolha {} como microfone. Dica: desative a supressão de ruído do Discord para músicas longas.",
             status.capture_hint
         ),
         reboot_required: false,

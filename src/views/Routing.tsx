@@ -288,7 +288,7 @@ export function RoutingView() {
                     push({
                       kind: "info",
                       message: enabled
-                        ? "Beep curto antes de cada som (Discord VAD)"
+                        ? "Keep-alive VAD ligado — mantém o Discord transmitindo durante o som inteiro"
                         : "VAD sound desligado",
                     });
                   } catch (err) {
@@ -296,6 +296,18 @@ export function RoutingView() {
                   }
                 }}
               />
+              <p className="text-[12px] text-[var(--buddio-text-secondary)]">
+                Se músicas longas saírem cortadas no Discord: desative{" "}
+                <strong className="font-semibold text-[var(--buddio-text)]">
+                  Supressão de ruído
+                </strong>{" "}
+                e{" "}
+                <strong className="font-semibold text-[var(--buddio-text)]">
+                  Cancelamento de eco
+                </strong>{" "}
+                no app de voz, ou baixe o limiar de atividade de voz. O Krisp
+                costuma engolir música.
+              </p>
             </div>
           </div>
         </section>

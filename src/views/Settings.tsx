@@ -294,6 +294,11 @@ export function SettingsView() {
               }
             }}
           />
+          <p className="text-[12px] text-[var(--buddio-text-secondary)]">
+            Mantém o Discord transmitindo durante o som inteiro. Se música ainda
+            sair cortada, desative a supressão de ruído / cancelamento de eco no
+            Discord (o Krisp engole música).
+          </p>
           <Toggle
             label="Atalhos por índice (Ctrl+Alt+N)"
             checked={settings.indexHotkeysEnabled}
