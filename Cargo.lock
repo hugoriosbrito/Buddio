@@ -301,6 +301,7 @@ dependencies = [
  "rodio",
  "serde",
  "sha2",
+ "symphonia",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",

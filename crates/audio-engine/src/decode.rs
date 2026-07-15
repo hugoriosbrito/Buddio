@@ -5,6 +5,13 @@ use std::io::BufReader;
 use std::path::Path;
 
 use rodio::Source;
+use symphonia::core::audio::SampleBuffer;
+use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
+use symphonia::core::errors::Error as SymphoniaError;
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::probe::Hint;
 
 use crate::cache::{fingerprint_path, DecodedClip};
 use crate::error::{AudioError, Result};
@@ -13,6 +20,14 @@ use crate::error::{AudioError, Result};
 ///
 /// Performs disk I/O and decoding on the caller thread — never from the cpal callback.
 pub fn decode_file(path: &Path) -> Result<DecodedClip> {
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("mp3"))
+    {
+        return decode_mp3(path);
+    }
+
     let file = File::open(path).map_err(AudioError::Io)?;
     let reader = BufReader::new(file);
 
@@ -30,6 +45,90 @@ pub fn decode_file(path: &Path) -> Result<DecodedClip> {
 
     let samples: Vec<f32> = decoder.convert_samples::<f32>().collect();
     if samples.is_empty() {
+        return Err(AudioError::Decode(format!(
+            "{}: decoded zero samples",
+            path.display()
+        )));
+    }
+
+    Ok(DecodedClip {
+        pcm: std::sync::Arc::from(samples.into_boxed_slice()),
+        sample_rate,
+        channels,
+        fingerprint: fingerprint_path(path),
+    })
+}
+
+/// Decode MP3 directly with Symphonia instead of Rodio's convenience wrapper.
+///
+/// Rodio stops opening a stream after three invalid packets. Some otherwise playable MP3s with
+/// embedded artwork or malformed metadata contain a recoverable invalid packet near the start;
+/// Symphonia's recommended handling is to skip those packets and keep decoding the audio track.
+fn decode_mp3(path: &Path) -> Result<DecodedClip> {
+    let file = File::open(path).map_err(AudioError::Io)?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let mut hint = Hint::new();
+    hint.with_extension("mp3");
+
+    let probed = symphonia::default::get_probe()
+        .format(
+            &hint,
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
+        .map_err(|error| AudioError::Decode(format!("{}: {error}", path.display())))?;
+    let mut format = probed.format;
+    let track = format
+        .default_track()
+        .filter(|track| track.codec_params.codec != CODEC_TYPE_NULL)
+        .ok_or_else(|| AudioError::Decode(format!("{}: no audio track", path.display())))?;
+    let track_id = track.id;
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&track.codec_params, &DecoderOptions::default())
+        .map_err(|error| AudioError::Decode(format!("{}: {error}", path.display())))?;
+
+    let mut samples = Vec::new();
+    let mut sample_rate = 0;
+    let mut channels = 0;
+    let mut sample_buffer = None;
+
+    loop {
+        let packet = match format.next_packet() {
+            Ok(packet) => packet,
+            Err(SymphoniaError::IoError(_)) => break,
+            Err(SymphoniaError::DecodeError(_)) => continue,
+            Err(error) => {
+                return Err(AudioError::Decode(format!("{}: {error}", path.display())));
+            }
+        };
+
+        if packet.track_id() != track_id {
+            continue;
+        }
+
+        match decoder.decode(&packet) {
+            Ok(decoded) => {
+                let spec = *decoded.spec();
+                if sample_buffer.is_none() {
+                    sample_rate = spec.rate;
+                    channels = spec.channels.count() as u16;
+                    sample_buffer = Some(SampleBuffer::<f32>::new(decoded.capacity() as u64, spec));
+                }
+
+                if let Some(buffer) = &mut sample_buffer {
+                    buffer.copy_interleaved_ref(decoded);
+                    samples.extend_from_slice(buffer.samples());
+                }
+            }
+            Err(SymphoniaError::IoError(_) | SymphoniaError::DecodeError(_)) => continue,
+            Err(error) => {
+                return Err(AudioError::Decode(format!("{}: {error}", path.display())));
+            }
+        }
+    }
+
+    if sample_rate == 0 || channels == 0 || samples.is_empty() {
         return Err(AudioError::Decode(format!(
             "{}: decoded zero samples",
             path.display()
@@ -118,6 +217,15 @@ mod tests {
         assert_eq!(clip.channels, 1);
         assert!(clip.pcm.len() >= 700);
         assert!(!clip.fingerprint.is_empty());
+    }
+
+    #[test]
+    #[ignore = "requires BUDDIO_MP3_FIXTURE to point to an MP3 with embedded cover art"]
+    fn decodes_mp3_with_embedded_cover_art() {
+        let path = std::env::var("BUDDIO_MP3_FIXTURE")
+            .expect("set BUDDIO_MP3_FIXTURE to an MP3 file with embedded artwork");
+        let clip = decode_file(Path::new(&path)).expect("decode tagged MP3");
+        assert!(!clip.pcm.is_empty());
     }
 
     #[test]

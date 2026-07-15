@@ -7,6 +7,7 @@ license = "MIT"
 
 [dependencies]
 rodio = { version = "0.20", default-features = false, features = ["symphonia-all"] }
+symphonia = { version = "0.5", default-features = false, features = ["mp3"] }
 cpal = "0.15"
 thiserror = "2"
 anyhow = "1"
