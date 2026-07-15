@@ -1,3 +1,4 @@
+pub mod backup;
 pub mod collections;
 pub mod folder_watch;
 pub mod hotkey_allocator;
