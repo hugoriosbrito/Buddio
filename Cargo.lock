@@ -489,7 +489,7 @@ dependencies = [
 
 [[package]]
 name = "buddio"
-version = "1.0.0-rc8"
+version = "1.0.0-rc9"
 dependencies = [
  "anyhow",
  "audio-engine",
