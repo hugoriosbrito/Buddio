@@ -2,6 +2,7 @@ import { Check, WarningCircle } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { localizeSeedName, useT } from "../i18n";
 import * as api from "../lib/api";
+import { suggestClipEmoji } from "../lib/clipIcon";
 import type { ClipDto, ImportResult } from "../lib/api";
 import { useCollectionsStore } from "../stores/collectionsStore";
 import { useLibraryStore } from "../stores/libraryStore";
@@ -48,12 +49,7 @@ export function ImportReviewModal() {
         name: clip.name,
         hotkey: clip.hotkey,
         collectionId: clip.collectionIds[0] ?? null,
-        iconUrl:
-          clip.emoji &&
-          (/^https?:\/\//i.test(clip.emoji) ||
-            clip.emoji.startsWith("data:image/"))
-            ? clip.emoji
-            : "",
+        iconUrl: clip.emoji || suggestClipEmoji(clip.name),
       };
     }
     setDrafts(base);

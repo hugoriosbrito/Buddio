@@ -15,6 +15,7 @@ import {
 import { localizeSeedName, useT, useLocale } from "../../i18n";
 import { useCollectionsStore } from "../../stores/collectionsStore";
 import { useLibraryStore } from "../../stores/libraryStore";
+import { useHelpStore } from "../../stores/helpStore";
 import { usePlaybackStore } from "../../stores/playbackStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useUiStore } from "../../stores/uiStore";
@@ -49,7 +50,7 @@ export function Inspector() {
   const collections = useCollectionsStore((s) => s.collections);
   const setEditorClipId = useUiStore((s) => s.setEditorClipId);
   const setInspectorOpen = useUiStore((s) => s.setInspectorOpen);
-  const setDiagnosticsOpen = useUiStore((s) => s.setDiagnosticsOpen);
+  const openHelp = useHelpStore((s) => s.open);
   const setView = useUiStore((s) => s.setView);
   const settings = useSettingsStore((s) => s.settings);
   const devices = useSettingsStore((s) => s.devices);
@@ -358,7 +359,7 @@ export function Inspector() {
           variant="secondary"
           className="w-full"
           icon={<ArrowsLeftRight size={16} weight="bold" />}
-          onClick={() => setDiagnosticsOpen(true)}
+          onClick={() => openHelp()}
         >
           {t("routing.testRouting")}
         </Button>

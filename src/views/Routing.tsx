@@ -7,9 +7,7 @@ import {
   Waveform as WaveIcon,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
-import { useState } from "react";
 import { Button } from "../components/ui/Button";
-import { Search } from "../components/ui/Search";
 import { Select } from "../components/ui/Select";
 import { Toggle } from "../components/ui/Toggle";
 import { Waveform } from "../components/Waveform";
@@ -17,8 +15,8 @@ import { useT } from "../i18n";
 import * as api from "../lib/api";
 import { cn } from "../lib/cn";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useHelpStore } from "../stores/helpStore";
 import { useToastStore } from "../stores/toastStore";
-import { useUiStore } from "../stores/uiStore";
 
 export function RoutingView() {
   const t = useT();
@@ -27,11 +25,8 @@ export function RoutingView() {
   const setOutputs = useSettingsStore((s) => s.setOutputs);
   const setMicRoute = useSettingsStore((s) => s.setMicRoute);
   const hydrate = useSettingsStore((s) => s.hydrate);
-  const setDiagnosticsOpen = useUiStore((s) => s.setDiagnosticsOpen);
+  const openHelp = useHelpStore((s) => s.open);
   const push = useToastStore((s) => s.push);
-  const [query, setQuery] = useState("");
-
-
   const hasSecondary = Boolean(settings.secondaryDevice);
   const monitorLabel = settings.monitorEnabled
     ? (settings.monitorDevice ?? t("common.systemDefault"))
@@ -68,13 +63,6 @@ export function RoutingView() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Search
-            placeholder={t("common.search")}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onClear={() => setQuery("")}
-            className="w-[200px] flex-none"
-          />
           <Button
             variant="primary"
             icon={<ArrowsClockwise size={16} weight="bold" />}
@@ -97,14 +85,7 @@ export function RoutingView() {
           </Button>
           <Button
             variant="secondary"
-            onClick={() => {
-              void api
-                .getDiagnostics()
-                .then(() => setDiagnosticsOpen(true))
-                .catch((err: unknown) =>
-                  push({ kind: "error", message: String(err) }),
-                );
-            }}
+            onClick={() => openHelp()}
           >
             {t("routing.diagnostics")}
           </Button>
@@ -332,13 +313,13 @@ export function RoutingView() {
             />
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => setDiagnosticsOpen(true)}>
+            <Button variant="secondary" onClick={() => openHelp()}>
               {t("routing.runDiagnostics")}
             </Button>
             <Button
               variant="primary"
               icon={<ArrowsClockwise size={16} weight="bold" />}
-              onClick={() => setDiagnosticsOpen(true)}
+              onClick={() => openHelp(hasSecondary ? undefined : "virtual-mic-missing")}
             >
               {t("routing.repairRoute")}
             </Button>

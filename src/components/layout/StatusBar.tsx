@@ -3,11 +3,13 @@ import type { ReactNode } from "react";
 import { localizeSeedName, useT } from "../../i18n";
 import { useProfilesStore } from "../../stores/profilesStore";
 import { useSettingsStore } from "../../stores/settingsStore";
+import { useHelpStore } from "../../stores/helpStore";
 
 export function StatusBar() {
   const t = useT();
   const settings = useSettingsStore((s) => s.settings);
   const profiles = useProfilesStore((s) => s.profiles);
+  const openHelp = useHelpStore((s) => s.open);
   const active =
     profiles.find((p) => p.id === settings.activeProfileId) ??
     profiles.find((p) => p.isDefault);
@@ -23,6 +25,9 @@ export function StatusBar() {
       : settings.micRouteMode === "ducking"
         ? t("settings.micMode.ducking")
         : t("profiles.micMode.mix");
+  const healthLabel = settings.secondaryDevice
+    ? (settings.monitorEnabled ? t("help.ready") : t("help.attention"))
+    : t("help.blocked");
 
   return (
     <footer className="flex h-[var(--status-h)] shrink-0 items-center gap-5 border-t border-[var(--buddio-border-subtle)] bg-[var(--buddio-window)] px-[var(--space-pad)] text-[12px]">
@@ -49,6 +54,13 @@ export function StatusBar() {
         value={micLabel}
         dot={settings.micRouteMode !== "soundOnly"}
       />
+      <button
+        type="button"
+        onClick={() => openHelp(settings.secondaryDevice ? undefined : "virtual-mic-missing")}
+        className="ml-auto rounded px-1.5 py-1 font-semibold text-[var(--buddio-text-secondary)] hover:bg-[var(--buddio-surface-secondary)] focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--buddio-brand)]"
+      >
+        {healthLabel}
+      </button>
     </footer>
   );
 }

@@ -3,6 +3,7 @@ import { useT, type MessageKey } from "../i18n";
 import { playClip, stopAll, stopClip } from "../lib/api";
 import { useLibraryStore } from "../stores/libraryStore";
 import { usePlaybackStore } from "../stores/playbackStore";
+import { useHelpStore } from "../stores/helpStore";
 import { useUiStore, type AppView } from "../stores/uiStore";
 import { Modal } from "./ui/Modal";
 import { Search } from "./ui/Search";
@@ -20,7 +21,7 @@ export function CommandPalette() {
   const open = useUiStore((s) => s.commandPaletteOpen);
   const setOpen = useUiStore((s) => s.setCommandPaletteOpen);
   const setView = useUiStore((s) => s.setView);
-  const setDiagnosticsOpen = useUiStore((s) => s.setDiagnosticsOpen);
+  const openHelp = useHelpStore((s) => s.open);
   const clips = useLibraryStore((s) => s.clips);
   const playingIds = usePlaybackStore((s) => s.playingIds);
   const [query, setQuery] = useState("");
@@ -40,7 +41,7 @@ export function CommandPalette() {
       {
         id: "diagnostics",
         label: t("palette.openDiagnostics"),
-        run: () => setDiagnosticsOpen(true),
+        run: () => openHelp(),
       },
       ...VIEW_KEYS.map((v) => ({
         id: `view-${v.id}`,
@@ -68,7 +69,7 @@ export function CommandPalette() {
     ];
     if (!q) return actions;
     return actions.filter((a) => a.label.toLowerCase().includes(q));
-  }, [clips, playingIds, query, setDiagnosticsOpen, setView, t]);
+  }, [clips, openHelp, playingIds, query, setView, t]);
 
   return (
     <Modal

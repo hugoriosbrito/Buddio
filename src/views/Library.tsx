@@ -284,7 +284,13 @@ export function LibraryView() {
           </p>
         ) : filtered.length === 0 ? (
           <div className="flex min-h-[16rem] flex-col items-center justify-center rounded-[var(--radius-card)] border border-dashed border-[var(--buddio-border)] px-6 text-center">
-            {collectionId && clips.length > 0 ? (
+            {query.trim() ? (
+              <>
+                <p className="text-[22px] font-bold">{t("library.noResultsTitle")}</p>
+                <p className="mt-2 max-w-sm text-[13px] text-[var(--buddio-text-secondary)]">{query}</p>
+                <Button variant="secondary" className="mt-4" onClick={() => setQuery("")}>{t("library.clearSearch")}</Button>
+              </>
+            ) : collectionId && clips.length > 0 ? (
               <>
                 <p className="text-[22px] font-bold">
                   {t("library.emptyCollection", {

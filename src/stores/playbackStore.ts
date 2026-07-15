@@ -4,6 +4,7 @@ const ERROR_DISPLAY_MS = 3000;
 
 type PlaybackState = {
   playingIds: Set<string>;
+  usage: Record<string, number>;
   errors: Record<string, string>;
   markStarted: (clipId: string) => void;
   markStopped: (clipId: string) => void;
@@ -14,16 +15,24 @@ type PlaybackState = {
 };
 
 const errorTimeouts = new Map<string, number>();
+const USAGE_KEY = "buddio.clip-usage";
+
+function loadUsage(): Record<string, number> {
+  try { return JSON.parse(localStorage.getItem(USAGE_KEY) ?? "{}"); } catch { return {}; }
+}
 
 export const usePlaybackStore = create<PlaybackState>((set, get) => ({
   playingIds: new Set(),
+  usage: loadUsage(),
   errors: {},
 
   markStarted: (clipId) =>
     set((state) => {
       const playingIds = new Set(state.playingIds);
       playingIds.add(clipId);
-      return { playingIds };
+      const usage = { ...state.usage, [clipId]: (state.usage[clipId] ?? 0) + 1 };
+      try { localStorage.setItem(USAGE_KEY, JSON.stringify(usage)); } catch { /* optional */ }
+      return { playingIds, usage };
     }),
 
   markStopped: (clipId) =>

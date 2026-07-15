@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { AppShell } from "./components/layout/AppShell";
 import { AudioEditorModal } from "./components/AudioEditorModal";
 import { CommandPalette } from "./components/CommandPalette";
-import { DiagnosticsModal } from "./components/DiagnosticsModal";
+import { HelpDiagnosticsModal } from "./components/HelpDiagnosticsModal";
 import { ImportReviewModal } from "./components/ImportReviewModal";
 import { OnboardingModal } from "./components/OnboardingModal";
 import { UpdateAvailableModal } from "./components/UpdateAvailableModal";
@@ -221,7 +221,7 @@ function MainApp() {
       <CommandPalette />
       <AudioEditorModal />
       <ImportReviewModal />
-      <DiagnosticsModal />
+      <HelpDiagnosticsModal />
       <UpdateAvailableModal />
     </div>
   );
