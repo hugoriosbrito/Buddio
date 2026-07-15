@@ -20,6 +20,7 @@ export function PadGrid({ emptyTitle, emptyBody }: Props) {
   const loading = useLibraryStore((s) => s.loading);
   const select = useLibraryStore((s) => s.select);
   const playingIds = usePlaybackStore((s) => s.playingIds);
+  const usage = usePlaybackStore((s) => s.usage);
   const errors = usePlaybackStore((s) => s.errors);
   const markError = usePlaybackStore((s) => s.markError);
   const collectionId = useUiStore((s) => s.selectedCollectionId);
@@ -32,7 +33,7 @@ export function PadGrid({ emptyTitle, emptyBody }: Props) {
     const smartId = collectionId?.startsWith("smart:")
       ? (collectionId.slice(6) as SmartCollectionId)
       : null;
-    const source = smartId ? filterSmartCollection(clips, smartId, new Map()) : clips;
+    const source = smartId ? filterSmartCollection(clips, smartId, new Map(Object.entries(usage))) : clips;
     return source.filter((c) => {
       if (collectionId && !c.collectionIds.includes(collectionId)) return false;
       if (!q) return true;
@@ -42,7 +43,7 @@ export function PadGrid({ emptyTitle, emptyBody }: Props) {
         (c.emoji?.includes(q) ?? false)
       );
     });
-  }, [clips, query, collectionId]);
+  }, [clips, query, collectionId, usage]);
 
   if (loading && clips.length === 0) {
     return (
