@@ -412,6 +412,14 @@ async ensureVirtualCable() : Promise<Result<VirtualCableEnsureResult, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async startNsisUpdate(version: string, downloadUrl: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("start_nsis_update", { version, downloadUrl }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async listWatchedFolders() : Promise<Result<WatchedFolderDto[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("list_watched_folders") };

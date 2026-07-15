@@ -3,6 +3,7 @@ pub mod folder_watch;
 pub mod hotkey_allocator;
 pub mod hotkeys;
 pub mod library;
+pub mod nsis_update;
 pub mod profiles;
 pub mod settings;
 pub mod virtual_cable;

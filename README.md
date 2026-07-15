@@ -56,7 +56,7 @@ the key and it plays instantly: no loading spinner, no "just a sec."
 - 🪟 **Buddio Mini**: a cozy tray popover for firing your pinned sounds without opening the full window, plus an Ultra Compact mode for four favorites
 - 🚀 **Guided setup**: a friendly first-run wizard walks you through output, mic, routing, your first sound, and your first hotkey
 - 🌐 **English & Portuguese**: UI language defaults to English; switch anytime in Settings → Appearance
-- ⬆️ **Update checks**: on launch, Buddio quietly checks GitHub Releases and prompts when a newer build is available
+- ⬆️ **In-app updates**: checks GitHub Releases and can download + install the Windows setup without opening a browser
 - 🌓 **Light & dark themes** that feel genuinely designed, not just inverted
 - 🔒 **Private by default**: your library lives in a local file; audio never leaves your computer
 

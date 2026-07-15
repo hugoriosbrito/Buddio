@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   compareSemver,
+  isAllowedUpdateDownloadUrl,
   normalizeVersion,
   parseVersion,
   pickNewestRelease,
+  pickNsisAssetUrl,
 } from "./updates";
 
 describe("normalizeVersion", () => {
@@ -75,5 +77,56 @@ describe("pickNewestRelease", () => {
       },
     ]);
     expect(picked?.tag_name).toBe("v1.0.0-rc1");
+  });
+});
+
+describe("pickNsisAssetUrl", () => {
+  it("picks Buddio x64 setup exe case-insensitively", () => {
+    expect(
+      pickNsisAssetUrl([
+        {
+          name: "notes.txt",
+          browser_download_url:
+            "https://github.com/x/y/releases/download/v1/notes.txt",
+        },
+        {
+          name: "Buddio_1.0.0-rc5_x64-setup.exe",
+          browser_download_url:
+            "https://github.com/hugoriosbrito/Buddio/releases/download/v1.0.0-rc5/Buddio_1.0.0-rc5_x64-setup.exe",
+        },
+      ]),
+    ).toContain("Buddio_1.0.0-rc5_x64-setup.exe");
+  });
+
+  it("returns null when no matching asset", () => {
+    expect(
+      pickNsisAssetUrl([
+        {
+          name: "foo.msi",
+          browser_download_url: "https://github.com/a/b/x.msi",
+        },
+      ]),
+    ).toBeNull();
+  });
+});
+
+describe("isAllowedUpdateDownloadUrl", () => {
+  it("allows github download hosts only", () => {
+    expect(
+      isAllowedUpdateDownloadUrl(
+        "https://github.com/hugoriosbrito/Buddio/releases/download/v1/Buddio_1_x64-setup.exe",
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedUpdateDownloadUrl(
+        "https://objects.githubusercontent.com/github-production-release-asset-2e65be/123/abc",
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedUpdateDownloadUrl("https://evil.example/Buddio_x64-setup.exe"),
+    ).toBe(false);
+    expect(isAllowedUpdateDownloadUrl("http://github.com/x/y.exe")).toBe(
+      false,
+    );
   });
 });

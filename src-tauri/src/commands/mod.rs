@@ -1092,3 +1092,52 @@ fn ensure_virtual_cable_blocking(
         status,
     })
 }
+
+/// Download the GitHub NSIS setup and silent-install (`/S /UPDATE /R`), then quit.
+#[tauri::command]
+#[specta::specta]
+pub async fn start_nsis_update(
+    app: AppHandle,
+    version: String,
+    download_url: String,
+) -> CmdResult<()> {
+    #[cfg(not(windows))]
+    {
+        let _ = (app, version, download_url);
+        return Err("In-app update install is only available on Windows.".into());
+    }
+
+    #[cfg(windows)]
+    {
+        use crate::managers::nsis_update;
+
+        if !nsis_update::is_allowed_download_url(&download_url) {
+            return Err("Update download URL is not allowed.".into());
+        }
+        let version = version.trim().to_string();
+        if version.is_empty() {
+            return Err("Missing update version.".into());
+        }
+
+        let dest = nsis_update::dest_path(&std::env::temp_dir(), &version);
+        let app_dl = app.clone();
+        let url = download_url.clone();
+        let dest_for_dl = dest.clone();
+
+        tauri::async_runtime::spawn_blocking(move || {
+            nsis_update::download_installer(&app_dl, &url, &dest_for_dl)
+        })
+        .await
+        .map_err(|e| format!("Update download interrupted: {e}"))?
+        .map_err(map_err)?;
+
+        nsis_update::launch_nsis_installer(&dest).map_err(map_err)?;
+
+        let app_quit = app.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            app_quit.exit(0);
+        });
+        Ok(())
+    }
+}

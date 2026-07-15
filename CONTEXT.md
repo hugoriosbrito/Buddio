@@ -59,6 +59,12 @@ build exists, an in-app modal prompts the user and a bell + red badge stays in
 the titlebar until updated. “Later” dismisses the modal for that version this
 session; the badge remains so the release can be reopened.
 
+On Windows, **Update now** downloads the release’s NSIS setup
+(`Buddio_*_x64-setup.exe`), installs with `/S /UPDATE /R` (silent, keep app data,
+relaunch), then quits so files can be replaced. Settings → Verify Updates uses
+the same path. If no installer asset is present, the UI falls back to opening
+the GitHub release page.
+
 ## Secondary / virtual mic
 
 The playback endpoint Buddio uses for calls (typically VB-CABLE **CABLE Input**).
