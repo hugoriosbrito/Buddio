@@ -8,10 +8,25 @@ A single sound in the library: metadata (name, hotkey, trim, fade, gain,
 normalization) plus an audio file stored locally under app data. The original
 import path is not required after import.
 
+## Clip icon
+
+A clip's visual identifier, using a user-selected emoji or image with an
+editable offline suggestion when neither is provided.
+
 ## Collection
 
 A named group of clips used for organization and for the active soundboard
 filter (e.g. Streaming, Jogos). A clip may belong to zero or more collections.
+
+## Smart collection
+
+A hideable, locally derived view of clips defined by a Buddio rule rather than
+manual membership.
+
+## Sound pack
+
+A shareable local package containing selected clips and their reusable metadata
+without personal devices, profiles, or application settings.
 
 ## Profile
 
@@ -64,6 +79,27 @@ On Windows, **Update now** downloads the release’s NSIS setup
 relaunch), then quits so files can be replaced. Settings → Verify Updates uses
 the same path. If no installer asset is present, the UI falls back to opening
 the GitHub release page.
+
+## Help and diagnostics center
+
+A permanent offline-first, beginner-first support surface combining route
+health, plain-language problem explanations, contextual guidance, and verified
+fixes.
+
+## Preferred app
+
+The call or streaming application whose setup guidance Buddio prioritizes in
+help and diagnostics.
+
+## App-linked profile
+
+A profile associated with a preferred app that Buddio may suggest or apply when
+that app opens, according to the user's saved consent.
+
+## Buddio backup
+
+A portable local package containing the library, collections, profiles,
+hotkeys, and settings needed to restore a Buddio workspace.
 
 ## Secondary / virtual mic
 
