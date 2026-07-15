@@ -28,7 +28,6 @@ type UiState = {
   inspectorOpen: boolean;
   commandPaletteOpen: boolean;
   onboardingOpen: boolean;
-  diagnosticsOpen: boolean;
   editorClipId: string | null;
   importReviewOpen: boolean;
   importReview: ImportResult | null;
@@ -45,7 +44,6 @@ type UiState = {
   setInspectorOpen: (open: boolean) => void;
   setCommandPaletteOpen: (open: boolean) => void;
   setOnboardingOpen: (open: boolean) => void;
-  setDiagnosticsOpen: (open: boolean) => void;
   setEditorClipId: (id: string | null) => void;
   setImportReviewOpen: (open: boolean) => void;
   setImportReview: (review: ImportResult | null) => void;
@@ -158,7 +156,6 @@ export const useUiStore = create<UiState>((set, get) => ({
   inspectorOpen: true,
   commandPaletteOpen: false,
   onboardingOpen: false,
-  diagnosticsOpen: false,
   editorClipId: null,
   importReviewOpen: false,
   importReview: null,
@@ -208,7 +205,6 @@ export const useUiStore = create<UiState>((set, get) => ({
   setInspectorOpen: (open) => set({ inspectorOpen: open }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   setOnboardingOpen: (open) => set({ onboardingOpen: open }),
-  setDiagnosticsOpen: (open) => set({ diagnosticsOpen: open }),
   setEditorClipId: (id) => set({ editorClipId: id }),
   setImportReviewOpen: (open) => set({ importReviewOpen: open }),
   setImportReview: (review) => set({ importReview: review }),

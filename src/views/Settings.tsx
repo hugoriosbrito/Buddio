@@ -30,6 +30,7 @@ import {
   type UiDensity,
 } from "../stores/uiStore";
 import { useToastStore } from "../stores/toastStore";
+import { useHelpStore } from "../stores/helpStore";
 import { useUpdateStore } from "../stores/updateStore";
 
 type SettingsSection =
@@ -108,7 +109,7 @@ export function SettingsView() {
   const startInBackground = useUiStore((s) => s.startInBackground);
   const setStartInBackground = useUiStore((s) => s.setStartInBackground);
   const setOnboardingOpen = useUiStore((s) => s.setOnboardingOpen);
-  const setDiagnosticsOpen = useUiStore((s) => s.setDiagnosticsOpen);
+  const openHelp = useHelpStore((s) => s.open);
   const push = useToastStore((s) => s.push);
   const checkNow = useUpdateStore((s) => s.checkNow);
   const updateChecking = useUpdateStore((s) => s.checking);
@@ -230,7 +231,7 @@ export function SettingsView() {
               </Button>
               <Button
                 variant="secondary"
-                onClick={() => setDiagnosticsOpen(true)}
+                onClick={() => openHelp()}
               >
                 {t("settings.openDiagnostics")}
               </Button>

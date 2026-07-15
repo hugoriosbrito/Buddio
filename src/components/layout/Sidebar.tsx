@@ -2,6 +2,7 @@ import {
   ArrowsLeftRight,
   Books,
   GearSix,
+  Lifebuoy,
   Plus,
   SquaresFour,
   User,
@@ -12,6 +13,7 @@ import { localizeSeedName, useT, type MessageKey } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { useCollectionsStore } from "../../stores/collectionsStore";
 import { useUiStore, type AppView } from "../../stores/uiStore";
+import { useHelpStore } from "../../stores/helpStore";
 import { PromptModal } from "../ui/PromptModal";
 
 const NAV: Array<{
@@ -29,6 +31,7 @@ export function Sidebar() {
   const t = useT();
   const view = useUiStore((s) => s.view);
   const setView = useUiStore((s) => s.setView);
+  const openHelp = useHelpStore((s) => s.open);
   const selectedCollectionId = useUiStore((s) => s.selectedCollectionId);
   const setSelectedCollectionId = useUiStore((s) => s.setSelectedCollectionId);
   const collections = useCollectionsStore((s) => s.collections);
@@ -134,6 +137,14 @@ export function Sidebar() {
       </div>
 
       <div className="px-3 pb-4 pt-2">
+        <button
+          type="button"
+          onClick={() => openHelp()}
+          className="relative mb-1 flex h-[var(--nav-h)] w-full items-center gap-3 rounded-[14px] px-3 text-[14px] font-medium hover:bg-[var(--buddio-surface)]/60"
+        >
+          <Lifebuoy size={18} />
+          {t("nav.help")}
+        </button>
         <button
           type="button"
           aria-current={view === "settings" ? "page" : undefined}
