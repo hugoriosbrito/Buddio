@@ -8,6 +8,8 @@ import { useCollectionsStore } from "../stores/collectionsStore";
 import { useLibraryStore } from "../stores/libraryStore";
 import { useUiStore } from "../stores/uiStore";
 import { HotkeyRecorder } from "./HotkeyRecorder";
+import { ClipIcon, isIconUrl } from "./ClipIcon";
+import { EmojiPicker } from "./EmojiPicker";
 import { Button } from "./ui/Button";
 import { Modal } from "./ui/Modal";
 import { Select } from "./ui/Select";
@@ -17,6 +19,7 @@ type Draft = {
   name: string;
   hotkey: string | null;
   collectionId: string | null;
+  emoji: string;
   iconUrl: string;
 };
 
@@ -45,11 +48,15 @@ export function ImportReviewModal() {
     // Fresh batch: rebuild drafts from imported clips.
     const base: Record<string, Draft> = {};
     for (const clip of review.imported) {
+      const storedIcon = clip.emoji?.trim() ?? "";
       base[clip.id] = {
         name: clip.name,
         hotkey: clip.hotkey,
         collectionId: clip.collectionIds[0] ?? null,
-        iconUrl: clip.emoji || suggestClipEmoji(clip.name),
+        emoji: isIconUrl(storedIcon)
+          ? suggestClipEmoji(clip.name)
+          : storedIcon || suggestClipEmoji(clip.name),
+        iconUrl: isIconUrl(storedIcon) ? storedIcon : "",
       };
     }
     setDrafts(base);
@@ -159,8 +166,7 @@ export function ImportReviewModal() {
         if (draft.name.trim() && draft.name.trim() !== clip.name) {
           await api.updateClip(clip.id, { name: draft.name.trim() });
         }
-        const icon = draft.iconUrl.trim();
-        const nextEmoji = icon || null;
+        const nextEmoji = draft.iconUrl.trim() || draft.emoji.trim() || null;
         if (nextEmoji !== clip.emoji) {
           await api.updateClip(clip.id, { emoji: nextEmoji });
         }
@@ -195,7 +201,7 @@ export function ImportReviewModal() {
       title={t("import.title")}
       description={t("import.description")}
       onClose={close}
-      className="max-w-[920px]"
+      className="max-w-[min(920px,calc(100vw-32px))] overflow-x-hidden"
       footer={
         <>
           <Button variant="secondary" onClick={close} disabled={saving}>
@@ -212,8 +218,8 @@ export function ImportReviewModal() {
         </>
       }
     >
-      <div className="grid gap-4 md:grid-cols-[1.4fr_0.9fr]">
-        <div className="rounded-[16px] border border-[var(--buddio-border)] bg-[var(--buddio-window)] p-4">
+      <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.9fr)]">
+        <div className="min-w-0 overflow-hidden rounded-[16px] border border-[var(--buddio-border)] bg-[var(--buddio-window)] p-4">
           <p className="text-[14px] font-semibold">
             {imported.length === 1
               ? t("import.filesImportedOne", { count: imported.length })
@@ -237,7 +243,7 @@ export function ImportReviewModal() {
             </p>
           </div>
 
-          <ul className="mt-4 flex flex-col gap-2">
+          <ul className="mt-4 min-w-0 flex flex-col gap-2">
             {imported.map((clip) => (
               <ImportRow
                 key={clip.id}
@@ -274,7 +280,7 @@ export function ImportReviewModal() {
           ) : null}
         </div>
 
-        <div className="rounded-[16px] border border-[var(--buddio-border)] bg-[var(--buddio-window)] p-4">
+        <div className="min-w-0 rounded-[16px] border border-[var(--buddio-border)] bg-[var(--buddio-window)] p-4">
           <p className="text-[10px] font-semibold tracking-[0.08em] text-[var(--buddio-text-muted)]">
             {t("import.summary")}
           </p>
@@ -312,9 +318,25 @@ export function ImportReviewModal() {
                 }
               />
 
-              <label className="flex flex-col gap-1.5 text-[13px]">
+              <div className="flex min-w-0 flex-col gap-1.5 text-[13px]">
                 <span className="text-[var(--buddio-text-secondary)]">
                   {t("import.iconLabel")}
+                </span>
+                <EmojiPicker
+                  value={activeDraft.emoji}
+                  onChange={(emoji) =>
+                    setDrafts((prev) => ({
+                      ...prev,
+                      [active.id]: { ...activeDraft, emoji },
+                    }))
+                  }
+                  label={t("import.chooseEmoji")}
+                  searchPlaceholder={t("import.searchEmoji")}
+                />
+              </div>
+              <label className="flex min-w-0 flex-col gap-1.5 text-[13px]">
+                <span className="text-[var(--buddio-text-secondary)]">
+                  {t("import.customImageUrl")}
                 </span>
                 <input
                   className="h-10 rounded-[12px] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] px-3 outline-none focus:border-[var(--buddio-brand)]"
@@ -330,22 +352,17 @@ export function ImportReviewModal() {
                     }))
                   }
                 />
-                {activeDraft.iconUrl.trim() ? (
-                  <span className="mt-1 flex items-center gap-2">
-                    <img
-                      src={activeDraft.iconUrl.trim()}
-                      alt=""
-                      className="size-10 rounded-md object-cover"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.opacity =
-                          "0.3";
-                      }}
-                    />
-                    <span className="text-[11px] text-[var(--buddio-text-muted)]">
-                      {t("import.iconPreview")}
-                    </span>
+                <span className="mt-1 flex items-center gap-2">
+                  <ClipIcon
+                    emoji={activeDraft.iconUrl.trim() || activeDraft.emoji}
+                    fallbackEmoji={activeDraft.emoji}
+                    size={40}
+                    className="flex shrink-0 items-center justify-center rounded-md bg-[var(--buddio-surface-secondary)]"
+                  />
+                  <span className="min-w-0 text-[11px] text-[var(--buddio-text-muted)]">
+                    {t("import.iconPreview")}
                   </span>
-                ) : null}
+                </span>
               </label>
 
               <div className="flex flex-col gap-1.5 text-[13px]">
@@ -404,9 +421,10 @@ function ImportRow({
   return (
     <button
       type="button"
+      title={name}
       onClick={onSelect}
       className={[
-        "flex w-full items-center justify-between gap-3 rounded-[12px] border px-3 py-2.5 text-left transition-colors",
+        "flex min-w-0 w-full items-center justify-between gap-3 rounded-[12px] border px-3 py-2.5 text-left transition-colors",
         active
           ? "border-[var(--buddio-brand-border)] bg-[var(--buddio-brand-soft)]"
           : "border-[var(--buddio-border)] bg-[var(--buddio-surface)] hover:border-[var(--buddio-brand-border)]/60",

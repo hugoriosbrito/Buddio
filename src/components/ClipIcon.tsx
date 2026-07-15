@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { useT } from "../i18n";
 
 /** True if the clip emoji field holds an image URL (custom pad icon). */
@@ -10,18 +10,24 @@ export function isIconUrl(value: string | null | undefined): boolean {
 
 export function ClipIcon({
   emoji,
+  fallbackEmoji,
   size = 28,
   className,
   onClick,
 }: {
   emoji?: string | null;
+  fallbackEmoji?: string | null;
   size?: number;
   className?: string;
   onClick?: (e: MouseEvent) => void;
 }) {
   const t = useT();
   const value = emoji?.trim() || null;
-  if (value && isIconUrl(value)) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => setImageFailed(false), [value]);
+
+  if (value && isIconUrl(value) && !imageFailed) {
     return (
       <button
         type="button"
@@ -35,10 +41,15 @@ export function ClipIcon({
           alt=""
           className="size-full rounded-md object-cover"
           draggable={false}
+          onError={() => setImageFailed(true)}
         />
       </button>
     );
   }
+
+  const displayValue = imageFailed
+    ? fallbackEmoji?.trim() || "♫"
+    : value || "♫";
 
   if (onClick) {
     return (
@@ -49,7 +60,7 @@ export function ClipIcon({
         onClick={onClick}
         style={{ fontSize: Math.round(size * 0.65), lineHeight: 1 }}
       >
-        {value ?? "♪"}
+        {displayValue}
       </button>
     );
   }
@@ -60,7 +71,7 @@ export function ClipIcon({
       aria-hidden
       style={{ fontSize: Math.round(size * 0.65), lineHeight: 1 }}
     >
-      {value ?? "♪"}
+      {displayValue}
     </span>
   );
 }
