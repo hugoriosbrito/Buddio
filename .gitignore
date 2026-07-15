@@ -83,3 +83,4 @@ tsc-out.txt
 
 # Temporary files
 tmp/
+.worktrees/
