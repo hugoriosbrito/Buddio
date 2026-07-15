@@ -1,6 +1,6 @@
 [package]
 name = "buddio"
-version = "1.0.0-rc6"
+version = "1.0.0-rc8"
 description = "Buddio — offline-first soundboard with global hotkeys"
 authors = ["Buddio Contributors"]
 edition = "2021"
@@ -44,6 +44,9 @@ rdev = "0.5"
 # windows (Invoke-WebRequest / Expand-Archive) during onboarding.
 ureq = { version = "2", default-features = false, features = ["tls"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 tempfile = "3"

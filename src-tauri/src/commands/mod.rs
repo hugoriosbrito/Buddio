@@ -1131,7 +1131,7 @@ pub async fn start_nsis_update(
         .map_err(|e| format!("Update download interrupted: {e}"))?
         .map_err(map_err)?;
 
-        nsis_update::launch_nsis_installer(&dest).map_err(map_err)?;
+        nsis_update::launch_nsis_installer(&dest).map_err(|err| format!("{err:#}"))?;
 
         let app_quit = app.clone();
         tauri::async_runtime::spawn(async move {

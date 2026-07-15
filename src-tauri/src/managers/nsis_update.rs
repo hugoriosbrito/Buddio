@@ -3,7 +3,6 @@
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
@@ -100,12 +99,35 @@ pub fn download_installer(app: &AppHandle, url: &str, dest: &Path) -> Result<()>
 }
 
 #[cfg(windows)]
+fn shell_execute_outcome(code: isize) -> Result<()> {
+    if code > 32 {
+        return Ok(());
+    }
+    bail!("Windows could not start the elevated installer (ShellExecute code {code})");
+}
+
+#[cfg(windows)]
 pub fn launch_nsis_installer(installer: &Path) -> Result<()> {
-    Command::new(installer)
-        .args(["/S", "/UPDATE", "/R"])
-        .spawn()
-        .with_context(|| format!("spawn installer {}", installer.display()))?;
-    Ok(())
+    use windows::{
+        core::{w, HSTRING},
+        Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL},
+    };
+
+    let file = HSTRING::from(installer);
+    let working_dir = HSTRING::from(installer.parent().unwrap_or_else(|| Path::new(".")));
+    let params = HSTRING::from("/S /UPDATE /R");
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            w!("runas"),
+            &file,
+            &params,
+            &working_dir,
+            SW_SHOWNORMAL,
+        )
+    };
+    shell_execute_outcome(result.0 as isize)
+        .with_context(|| format!("launch elevated installer {}", installer.display()))
 }
 
 #[cfg(not(windows))]
@@ -144,5 +166,18 @@ mod tests {
         assert!(path
             .to_string_lossy()
             .contains("Buddio_1.0.0-rc5_x64-setup.exe"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn accepts_shell_execute_success_codes() {
+        assert!(shell_execute_outcome(33).is_ok());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn exposes_shell_execute_failure_code() {
+        let error = shell_execute_outcome(5).unwrap_err();
+        assert!(error.to_string().contains("code 5"));
     }
 }

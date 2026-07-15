@@ -488,7 +488,7 @@ dependencies = [
 
 [[package]]
 name = "buddio"
-version = "1.0.0-rc6"
+version = "1.0.0-rc8"
 dependencies = [
  "anyhow",
  "audio-engine",
@@ -519,6 +519,7 @@ dependencies = [
  "ureq",
  "uuid",
  "walkdir",
+ "windows 0.61.3",
  "zip",
 ]
 
