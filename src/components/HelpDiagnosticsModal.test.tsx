@@ -36,4 +36,13 @@ describe("HelpDiagnosticsModal", () => {
     await waitFor(() => expect(getDiagnostics).toHaveBeenCalledTimes(2));
     expect(await screen.findByText("Resolved")).toBeTruthy();
   });
+
+  it("saves the selected preferred app from a healthy diagnosis", async () => {
+    getDiagnostics.mockResolvedValue(ready);
+    render(<HelpDiagnosticsModal />);
+    useHelpStore.getState().open();
+    const select = await screen.findByLabelText("Preferred app");
+    fireEvent.change(select, { target: { value: "obs" } });
+    expect(useHelpStore.getState().preferredApp).toBe("obs");
+  });
 });

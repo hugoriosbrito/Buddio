@@ -3,7 +3,7 @@ import type { DiagnosticsDto } from "../lib/api";
 import * as api from "../lib/api";
 import { useT, type MessageKey } from "../i18n";
 import { classifyRouteHealth, sanitizeDiagnostics, type RouteProblemId } from "../lib/routeHealth";
-import { useHelpStore } from "../stores/helpStore";
+import { HELP_APPS, useHelpStore, type HelpApp } from "../stores/helpStore";
 import { useToastStore } from "../stores/toastStore";
 import { useUiStore } from "../stores/uiStore";
 import { Button } from "./ui/Button";
@@ -20,6 +20,8 @@ const problemKeys: Record<RouteProblemId, { title: MessageKey; detail: MessageKe
 export function HelpDiagnosticsModal() {
   const t = useT();
   const isOpen = useHelpStore((state) => state.isOpen);
+  const preferredApp = useHelpStore((state) => state.preferredApp);
+  const setPreferredApp = useHelpStore((state) => state.setPreferredApp);
   const close = useHelpStore((state) => state.close);
   const push = useToastStore((state) => state.push);
   const [snapshot, setSnapshot] = useState<DiagnosticsDto | null>(null);
@@ -87,7 +89,7 @@ export function HelpDiagnosticsModal() {
         {verified ? <p className="font-semibold text-[var(--buddio-success)]">{t("help.resolved")}</p> : null}
         {repairKind === "ensure-virtual-cable" ? <Button variant="primary" loading={busy} onClick={() => void repair()}>{busy ? t("help.repairing") : t(keys.action!)}</Button> : null}
         {repairKind === "open-routing" ? <Button variant="primary" onClick={openRouting}>{t(keys.action!)}</Button> : null}
-        {repairKind === "none" ? <div><p className="font-semibold">{t("help.whatHappening")}</p><p className="mt-1 text-[var(--buddio-text-secondary)]">{t("help.guide.generic")}</p></div> : null}
+        {repairKind === "none" ? <div><label className="flex flex-col gap-1 font-semibold">{t("help.preferredApp")}<select aria-label={t("help.preferredApp")} value={preferredApp} onChange={(event) => setPreferredApp(event.target.value as HelpApp)} className="h-[var(--control-h)] rounded-[var(--radius-control)] border border-[var(--buddio-border)] bg-[var(--buddio-surface)] px-3 font-normal"><>{HELP_APPS.map((app) => <option key={app} value={app}>{t(`help.app.${app}` as MessageKey)}</option>)}</></select></label><p className="mt-3 font-semibold">{t("help.whatHappening")}</p><p className="mt-1 text-[var(--buddio-text-secondary)]">{t("help.guide.generic", { app: t(`help.app.${preferredApp}` as MessageKey) })}</p></div> : null}
         <details><summary className="cursor-pointer font-semibold">{t("help.technicalDetails")}</summary><pre className="mt-2 whitespace-pre-wrap text-[11px] text-[var(--buddio-text-secondary)]">{sanitizeDiagnostics(snapshot)}</pre><Button className="mt-2" variant="ghost" onClick={() => void copyReport()}>{t("common.copy")}</Button></details>
       </> : null}
     </div>
