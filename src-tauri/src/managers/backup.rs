@@ -3,6 +3,7 @@ use std::io::{Cursor, Read};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use zip::ZipArchive;
+use zip::write::SimpleFileOptions;
 
 pub const BACKUP_MANIFEST_PATH: &str = "manifest.json";
 const BACKUP_FORMAT_VERSION: u32 = 1;
@@ -38,12 +39,30 @@ pub fn validate_backup_archive(bytes: &[u8]) -> Result<BackupManifest> {
     Ok(manifest)
 }
 
+pub fn create_backup_archive(files: &[(&str, &[u8])]) -> Result<Vec<u8>> {
+    let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    let manifest = serde_json::to_vec(&BackupManifest {
+        version: BACKUP_FORMAT_VERSION,
+        kind: "buddio-backup".into(),
+    })?;
+    writer.start_file(BACKUP_MANIFEST_PATH, SimpleFileOptions::default())?;
+    std::io::Write::write_all(&mut writer, &manifest)?;
+    for (name, contents) in files {
+        if name.starts_with('/') || name.contains("..") || name.contains('\\') {
+            bail!("backup entry path is unsafe");
+        }
+        writer.start_file(*name, SimpleFileOptions::default())?;
+        std::io::Write::write_all(&mut writer, contents)?;
+    }
+    Ok(writer.finish()?.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::{Cursor, Write};
     use zip::write::SimpleFileOptions;
 
-    use super::{validate_backup_archive, BACKUP_MANIFEST_PATH};
+    use super::{create_backup_archive, validate_backup_archive, BACKUP_MANIFEST_PATH};
 
     fn archive(entries: &[(&str, &str)]) -> Vec<u8> {
         let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
@@ -64,5 +83,11 @@ mod tests {
     fn rejects_archive_path_traversal() {
         let bytes = archive(&[(BACKUP_MANIFEST_PATH, r#"{"version":1,"kind":"buddio-backup"}"#), ("../escape", "no")]);
         assert!(validate_backup_archive(&bytes).is_err());
+    }
+
+    #[test]
+    fn creates_a_valid_backup_archive() {
+        let bytes = create_backup_archive(&[("assets/a.wav", b"audio".as_slice())]).unwrap();
+        assert_eq!(validate_backup_archive(&bytes).unwrap().kind, "buddio-backup");
     }
 }
