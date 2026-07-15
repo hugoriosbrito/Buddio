@@ -82,6 +82,11 @@ export function SoundboardView() {
             {localizeSeedName(c.name, t)}
           </FilterPill>
         ))}
+        {(["recent", "most-used", "without-hotkey", "unorganized"] as const).map((id) => (
+          <FilterPill key={id} active={selectedCollectionId === `smart:${id}`} onClick={() => setSelectedCollectionId(`smart:${id}`)}>
+            {t(`smart.${id}`)}
+          </FilterPill>
+        ))}
       </div>
 
       {error ? (

@@ -5,6 +5,7 @@ import { useLibraryStore } from "../stores/libraryStore";
 import { usePlaybackStore } from "../stores/playbackStore";
 import { useUiStore } from "../stores/uiStore";
 import { PadCard } from "./PadCard";
+import { filterSmartCollection, type SmartCollectionId } from "../lib/smartCollections";
 
 type Props = {
   emptyTitle?: string;
@@ -28,7 +29,11 @@ export function PadGrid({ emptyTitle, emptyBody }: Props) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return clips.filter((c) => {
+    const smartId = collectionId?.startsWith("smart:")
+      ? (collectionId.slice(6) as SmartCollectionId)
+      : null;
+    const source = smartId ? filterSmartCollection(clips, smartId, new Map()) : clips;
+    return source.filter((c) => {
       if (collectionId && !c.collectionIds.includes(collectionId)) return false;
       if (!q) return true;
       return (
