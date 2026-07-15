@@ -1,3 +1,6 @@
+// Backup archive primitives are covered by unit tests and will be wired to the
+// UI in a follow-up; keep them available without failing release checks first.
+#[allow(dead_code)]
 pub mod backup;
 pub mod collections;
 pub mod folder_watch;
